@@ -1,0 +1,21 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "test/.*\\.e2e-spec\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": "<rootDir>/tsconfig.spec.json"
+      }
+    ]
+  },
+  "moduleNameMapper": {
+    "^@app/common(|/.*)$": "<rootDir>/libs/common/src$1",
+    "^@app/database(|/.*)$": "<rootDir>/libs/database/src$1",
+    "^@app/events(|/.*)$": "<rootDir>/libs/events/src$1",
+    "^@app/vault(|/.*)$": "<rootDir>/libs/vault/src$1",
+    "^@app/redis(|/.*)$": "<rootDir>/libs/redis/src$1"
+  }
+}

@@ -1,0 +1,17 @@
+# ==================================================
+# ROOT PROJECT GITIGNORE
+# ==================================================
+
+# Local AI/assistant configuration
+.agents/
+.codex/
+
+# Generated local TLS certificates
+backend-service/nginx/certs/*
+!backend-service/nginx/certs/.gitkeep
+
+# Local CI reports and artifacts
+reports/
+*.sarif
+*.spdx.json
+*.cdx.json

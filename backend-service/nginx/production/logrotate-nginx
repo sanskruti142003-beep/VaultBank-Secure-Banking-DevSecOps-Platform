@@ -1,0 +1,13 @@
+/var/log/nginx/access.log /var/log/nginx/error.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root adm
+    sharedscripts
+    postrotate
+        docker exec banking-nginx nginx -s reopen >/dev/null 2>&1 || true
+    endscript
+}

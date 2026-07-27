@@ -1,0 +1,5 @@
+# Generated from https://ip-ranges.amazonaws.com/ip-ranges.json.
+# Keep only entries whose service is CLOUDFRONT and emit one allow line each.
+# Examples only; refresh from AWS before deployment.
+allow 120.52.22.96/27;
+allow 205.251.249.0/24;

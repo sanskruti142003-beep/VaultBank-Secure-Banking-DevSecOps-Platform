@@ -1,0 +1,454 @@
+x-vault-seed-environment: &vault-seed-environment
+  VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN:?Set VAULT_DEV_ROOT_TOKEN in .env}
+  POSTGRES_HOST: postgres
+  REDIS_HOST: redis
+  RABBITMQ_HOST: rabbitmq
+  POSTGRES_PORT: 5432
+  REDIS_PORT: 6379
+  RABBITMQ_AMQP_PORT: 5672
+  RABBITMQ_VHOST_ENCODED: ${RABBITMQ_VHOST_ENCODED:-%2Fbanking-dev}
+  AUTH_SERVICE_DB_PASSWORD: ${AUTH_SERVICE_DB_PASSWORD:?Set AUTH_SERVICE_DB_PASSWORD in .env}
+  ACCOUNT_SERVICE_DB_PASSWORD: ${ACCOUNT_SERVICE_DB_PASSWORD:?Set ACCOUNT_SERVICE_DB_PASSWORD in .env}
+  TRANSACTION_SERVICE_DB_PASSWORD: ${TRANSACTION_SERVICE_DB_PASSWORD:?Set TRANSACTION_SERVICE_DB_PASSWORD in .env}
+  PAYMENT_SERVICE_DB_PASSWORD: ${PAYMENT_SERVICE_DB_PASSWORD:?Set PAYMENT_SERVICE_DB_PASSWORD in .env}
+  AUDIT_SERVICE_DB_PASSWORD: ${AUDIT_SERVICE_DB_PASSWORD:?Set AUDIT_SERVICE_DB_PASSWORD in .env}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+  AUTH_SVC_RABBITMQ_PASSWORD: ${AUTH_SVC_RABBITMQ_PASSWORD:?Set AUTH_SVC_RABBITMQ_PASSWORD in .env}
+  ACCOUNT_SVC_RABBITMQ_PASSWORD: ${ACCOUNT_SVC_RABBITMQ_PASSWORD:?Set ACCOUNT_SVC_RABBITMQ_PASSWORD in .env}
+  TRANSACTION_SVC_RABBITMQ_PASSWORD: ${TRANSACTION_SVC_RABBITMQ_PASSWORD:?Set TRANSACTION_SVC_RABBITMQ_PASSWORD in .env}
+  PAYMENT_SVC_RABBITMQ_PASSWORD: ${PAYMENT_SVC_RABBITMQ_PASSWORD:?Set PAYMENT_SVC_RABBITMQ_PASSWORD in .env}
+  AUDIT_SVC_RABBITMQ_PASSWORD: ${AUDIT_SVC_RABBITMQ_PASSWORD:?Set AUDIT_SVC_RABBITMQ_PASSWORD in .env}
+  NOTIFICATION_SVC_RABBITMQ_PASSWORD: ${NOTIFICATION_SVC_RABBITMQ_PASSWORD:?Set NOTIFICATION_SVC_RABBITMQ_PASSWORD in .env}
+  DEAD_LETTER_SVC_RABBITMQ_PASSWORD: ${DEAD_LETTER_SVC_RABBITMQ_PASSWORD:?Set DEAD_LETTER_SVC_RABBITMQ_PASSWORD in .env}
+  JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?Set STRIPE_SECRET_KEY in .env}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?Set STRIPE_WEBHOOK_SECRET in .env}
+  PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID:?Set PAYPAL_CLIENT_ID in .env}
+  PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET:?Set PAYPAL_CLIENT_SECRET in .env}
+  PAYPAL_WEBHOOK_ID: ${PAYPAL_WEBHOOK_ID:?Set PAYPAL_WEBHOOK_ID in .env}
+  SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+  SMTP_PORT: ${SMTP_PORT:-465}
+  SMTP_SECURE: ${SMTP_SECURE:-true}
+  SMTP_USER: ${SMTP_USER:-patilsonalias002@gmail.com}
+  SMTP_FROM: ${SMTP_FROM:-patilsonalias002@gmail.com}
+  SMTP_PASS: ${SMTP_PASS:?Set SMTP_PASS to your Google app password in .env}
+  TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+  TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+  TWILIO_API_KEY: ${TWILIO_API_KEY:-}
+  TWILIO_API_KEY_SID: ${TWILIO_API_KEY_SID:-}
+  TWILIO_API_SECRET: ${TWILIO_API_SECRET:-}
+  TWILIO_FROM_PHONE_NUMBER: ${TWILIO_FROM_PHONE_NUMBER:-}
+  TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
+  TWILIO_VERIFY_SERVICE_SID: ${TWILIO_VERIFY_SERVICE_SID:-}
+  AUTH_SERVICE_VAULT_ROLE_ID: ${AUTH_SERVICE_VAULT_ROLE_ID:-}
+  AUTH_SERVICE_VAULT_SECRET_ID: ${AUTH_SERVICE_VAULT_SECRET_ID:-}
+  ACCOUNT_SERVICE_VAULT_ROLE_ID: ${ACCOUNT_SERVICE_VAULT_ROLE_ID:-}
+  ACCOUNT_SERVICE_VAULT_SECRET_ID: ${ACCOUNT_SERVICE_VAULT_SECRET_ID:-}
+  TRANSACTION_SERVICE_VAULT_ROLE_ID: ${TRANSACTION_SERVICE_VAULT_ROLE_ID:-}
+  TRANSACTION_SERVICE_VAULT_SECRET_ID: ${TRANSACTION_SERVICE_VAULT_SECRET_ID:-}
+  PAYMENT_SERVICE_VAULT_ROLE_ID: ${PAYMENT_SERVICE_VAULT_ROLE_ID:-}
+  PAYMENT_SERVICE_VAULT_SECRET_ID: ${PAYMENT_SERVICE_VAULT_SECRET_ID:-}
+  AUDIT_SERVICE_VAULT_ROLE_ID: ${AUDIT_SERVICE_VAULT_ROLE_ID:-}
+  AUDIT_SERVICE_VAULT_SECRET_ID: ${AUDIT_SERVICE_VAULT_SECRET_ID:-}
+  NOTIFICATION_SERVICE_VAULT_ROLE_ID: ${NOTIFICATION_SERVICE_VAULT_ROLE_ID:-}
+  NOTIFICATION_SERVICE_VAULT_SECRET_ID: ${NOTIFICATION_SERVICE_VAULT_SECRET_ID:-}
+  DEAD_LETTER_SERVICE_VAULT_ROLE_ID: ${DEAD_LETTER_SERVICE_VAULT_ROLE_ID:-}
+  DEAD_LETTER_SERVICE_VAULT_SECRET_ID: ${DEAD_LETTER_SERVICE_VAULT_SECRET_ID:-}
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: banking-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:?Set POSTGRES_ADMIN_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_ADMIN_DB:-postgres}
+      AUTH_MIGRATOR_PASSWORD: ${AUTH_MIGRATOR_PASSWORD:?Set AUTH_MIGRATOR_PASSWORD in .env}
+      AUTH_SERVICE_DB_PASSWORD: ${AUTH_SERVICE_DB_PASSWORD:?Set AUTH_SERVICE_DB_PASSWORD in .env}
+      ACCOUNT_MIGRATOR_PASSWORD: ${ACCOUNT_MIGRATOR_PASSWORD:?Set ACCOUNT_MIGRATOR_PASSWORD in .env}
+      ACCOUNT_SERVICE_DB_PASSWORD: ${ACCOUNT_SERVICE_DB_PASSWORD:?Set ACCOUNT_SERVICE_DB_PASSWORD in .env}
+      TRANSACTION_MIGRATOR_PASSWORD: ${TRANSACTION_MIGRATOR_PASSWORD:?Set TRANSACTION_MIGRATOR_PASSWORD in .env}
+      TRANSACTION_SERVICE_DB_PASSWORD: ${TRANSACTION_SERVICE_DB_PASSWORD:?Set TRANSACTION_SERVICE_DB_PASSWORD in .env}
+      PAYMENT_MIGRATOR_PASSWORD: ${PAYMENT_MIGRATOR_PASSWORD:?Set PAYMENT_MIGRATOR_PASSWORD in .env}
+      PAYMENT_SERVICE_DB_PASSWORD: ${PAYMENT_SERVICE_DB_PASSWORD:?Set PAYMENT_SERVICE_DB_PASSWORD in .env}
+      AUDIT_MIGRATOR_PASSWORD: ${AUDIT_MIGRATOR_PASSWORD:?Set AUDIT_MIGRATOR_PASSWORD in .env}
+      AUDIT_SERVICE_DB_PASSWORD: ${AUDIT_SERVICE_DB_PASSWORD:?Set AUDIT_SERVICE_DB_PASSWORD in .env}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - banking_postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+      - ./docker/postgres/init.sql:/docker-entrypoint-templates/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - banking-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: banking-redis
+    restart: unless-stopped
+    command:
+      [
+        'sh',
+        '-c',
+        'exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$$REDIS_PASSWORD"',
+      ]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    volumes:
+      - banking_redis_data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli --no-auth-warning ping | grep PONG',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - banking-network
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: banking-rabbitmq
+    hostname: banking-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_ADMIN_PASSWORD: ${RABBITMQ_ADMIN_PASSWORD:?Set RABBITMQ_ADMIN_PASSWORD in .env}
+      AUTH_SVC_RABBITMQ_PASSWORD: ${AUTH_SVC_RABBITMQ_PASSWORD:?Set AUTH_SVC_RABBITMQ_PASSWORD in .env}
+      ACCOUNT_SVC_RABBITMQ_PASSWORD: ${ACCOUNT_SVC_RABBITMQ_PASSWORD:?Set ACCOUNT_SVC_RABBITMQ_PASSWORD in .env}
+      TRANSACTION_SVC_RABBITMQ_PASSWORD: ${TRANSACTION_SVC_RABBITMQ_PASSWORD:?Set TRANSACTION_SVC_RABBITMQ_PASSWORD in .env}
+      PAYMENT_SVC_RABBITMQ_PASSWORD: ${PAYMENT_SVC_RABBITMQ_PASSWORD:?Set PAYMENT_SVC_RABBITMQ_PASSWORD in .env}
+      AUDIT_SVC_RABBITMQ_PASSWORD: ${AUDIT_SVC_RABBITMQ_PASSWORD:?Set AUDIT_SVC_RABBITMQ_PASSWORD in .env}
+      NOTIFICATION_SVC_RABBITMQ_PASSWORD: ${NOTIFICATION_SVC_RABBITMQ_PASSWORD:?Set NOTIFICATION_SVC_RABBITMQ_PASSWORD in .env}
+      DEAD_LETTER_SVC_RABBITMQ_PASSWORD: ${DEAD_LETTER_SVC_RABBITMQ_PASSWORD:?Set DEAD_LETTER_SVC_RABBITMQ_PASSWORD in .env}
+    entrypoint: ['/bin/sh', '/etc/rabbitmq/docker-entrypoint-custom.sh']
+    ports:
+      - '127.0.0.1:${RABBITMQ_AMQP_PORT:-5672}:5672'
+      - '127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672'
+    volumes:
+      - banking_rabbitmq_data:/var/lib/rabbitmq
+      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.template.json:ro
+      - ./docker/rabbitmq/docker-entrypoint.sh:/etc/rabbitmq/docker-entrypoint-custom.sh:ro
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - banking-network
+
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: banking-vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      <<: *vault-seed-environment
+      VAULT_ADDR: http://127.0.0.1:8200
+    command:
+      [
+        'server',
+        '-dev',
+        '-dev-root-token-id=${VAULT_DEV_ROOT_TOKEN:?Set VAULT_DEV_ROOT_TOKEN in .env}',
+        '-dev-listen-address=0.0.0.0:8200',
+      ]
+    ports:
+      - '127.0.0.1:${VAULT_PORT:-8200}:8200'
+    volumes:
+      #- ./docker/vault/config:/vault/config:ro
+      - ./docker/vault/init:/vault/init:ro
+      - ./docker/vault/policies:/vault/policies:ro
+      - banking_vault_init_output:/vault/init-output
+    healthcheck:
+      test: ['CMD-SHELL', 'vault status >/dev/null 2>&1']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - banking-network
+
+  vault-init:
+    image: hashicorp/vault:1.15
+    container_name: banking-vault-init
+    restart: 'no'
+    environment:
+      <<: *vault-seed-environment
+      VAULT_ADDR: http://vault:8200
+    command: ['sh', '/vault/init/vault-init.sh']
+    volumes:
+      - ./docker/vault/init:/vault/init:ro
+      - ./docker/vault/policies:/vault/policies:ro
+      - banking_vault_init_output:/vault/init-output
+    depends_on:
+      vault:
+        condition: service_healthy
+    networks:
+      - banking-network
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: auth-service
+    container_name: banking-auth-service
+    restart: unless-stopped
+    environment:
+      APP_RUNTIME: docker
+      PORT: 3001
+      VAULT_ADDR: http://vault:8200
+      VAULT_ROLE_ID: ${AUTH_SERVICE_VAULT_ROLE_ID:?Run vault:init and copy AUTH_SERVICE_VAULT_ROLE_ID into .env}
+      VAULT_SECRET_ID: ${AUTH_SERVICE_VAULT_SECRET_ID:?Run vault:init and copy AUTH_SERVICE_VAULT_SECRET_ID into .env}
+      ALLOW_MULTI_SESSION: ${ALLOW_MULTI_SESSION:-false}
+    expose:
+      - '3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - banking-network
+
+  account-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: account-service
+    container_name: banking-account-service
+    restart: unless-stopped
+    environment:
+      APP_RUNTIME: docker
+      PORT: 3002
+      VAULT_ADDR: http://vault:8200
+      VAULT_ROLE_ID: ${ACCOUNT_SERVICE_VAULT_ROLE_ID:?Run vault:init and copy ACCOUNT_SERVICE_VAULT_ROLE_ID into .env}
+      VAULT_SECRET_ID: ${ACCOUNT_SERVICE_VAULT_SECRET_ID:?Run vault:init and copy ACCOUNT_SERVICE_VAULT_SECRET_ID into .env}
+      AUTH_SERVICE_URL: http://auth-service:3001/v1
+      BANK_CODE: ${BANK_CODE:-10}
+    expose:
+      - '3002'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3002/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - banking-network
+
+  transaction-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: transaction-service
+    container_name: banking-transaction-service
+    restart: unless-stopped
+    environment:
+      APP_RUNTIME: docker
+      PORT: 3003
+      VAULT_ADDR: http://vault:8200
+      VAULT_ROLE_ID: ${TRANSACTION_SERVICE_VAULT_ROLE_ID:?Run vault:init and copy TRANSACTION_SERVICE_VAULT_ROLE_ID into .env}
+      VAULT_SECRET_ID: ${TRANSACTION_SERVICE_VAULT_SECRET_ID:?Run vault:init and copy TRANSACTION_SERVICE_VAULT_SECRET_ID into .env}
+      AUTH_SERVICE_URL: http://auth-service:3001/v1
+      ACCOUNT_SERVICE_URL: http://account-service:3002/v1
+      CLEARING_ACCOUNT_ID: ${CLEARING_ACCOUNT_ID:-00000000-0000-4000-8000-000000000001}
+      FEE_ACCOUNT_ID: ${FEE_ACCOUNT_ID:-00000000-0000-4000-8000-000000000002}
+    expose:
+      - '3003'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+      auth-service:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3003/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - banking-network
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: payment-service
+    container_name: banking-payment-service
+    restart: unless-stopped
+    environment:
+      APP_RUNTIME: docker
+      PORT: 3004
+      VAULT_ADDR: http://vault:8200
+      VAULT_ROLE_ID: ${PAYMENT_SERVICE_VAULT_ROLE_ID:?Run vault:init and copy PAYMENT_SERVICE_VAULT_ROLE_ID into .env}
+      VAULT_SECRET_ID: ${PAYMENT_SERVICE_VAULT_SECRET_ID:?Run vault:init and copy PAYMENT_SERVICE_VAULT_SECRET_ID into .env}
+      AUTH_SERVICE_URL: http://auth-service:3001/v1
+      TRANSACTION_SERVICE_URL: http://transaction-service:3003/v1
+      RECEIPT_BASE_URL: ${RECEIPT_BASE_URL:-https://receipts.example.com}
+      PAYPAL_API_URL: ${PAYPAL_API_URL:-https://api-m.sandbox.paypal.com}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:-patilsonalias002@gmail.com}
+      SMTP_FROM: ${SMTP_FROM:-patilsonalias002@gmail.com}
+      SMTP_PASS: ${SMTP_PASS:?Set SMTP_PASS to your Google app password in .env}
+      PAYMENT_OTP_CHANNEL: ${PAYMENT_OTP_CHANNEL:-sms}
+      PAYMENT_OTP_EMAIL_FALLBACK: ${PAYMENT_OTP_EMAIL_FALLBACK:-true}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_API_KEY: ${TWILIO_API_KEY:-}
+      TWILIO_API_KEY_SID: ${TWILIO_API_KEY_SID:-}
+      TWILIO_API_SECRET: ${TWILIO_API_SECRET:-}
+      TWILIO_FROM_PHONE_NUMBER: ${TWILIO_FROM_PHONE_NUMBER:-}
+      TWILIO_MESSAGING_SERVICE_SID: ${TWILIO_MESSAGING_SERVICE_SID:-}
+      TWILIO_VERIFY_SERVICE_SID: ${TWILIO_VERIFY_SERVICE_SID:-}
+    expose:
+      - '3004'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+      auth-service:
+        condition: service_healthy
+      transaction-service:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3004/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - banking-network
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+      args:
+        NGINX_HOST: ${NGINX_HOST:-localhost}
+    container_name: banking-nginx
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${NGINX_HTTP_PORT:-8080}:80'
+      - '127.0.0.1:${NGINX_HTTPS_PORT:-443}:443'
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/html:/etc/nginx/html:ro
+      - ${SSL_CERT_PATH:-./nginx/certs/self-signed.crt}:/etc/nginx/certs/self-signed.crt:ro
+      - ${SSL_KEY_PATH:-./nginx/certs/self-signed.key}:/etc/nginx/certs/self-signed.key:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
+      transaction-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'nginx', '-t']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - banking-network
+
+volumes:
+  banking_postgres_data:
+  banking_redis_data:
+  banking_rabbitmq_data:
+  banking_vault_init_output:
+
+networks:
+  banking-network:
+    name: banking-network
+    driver: bridge
