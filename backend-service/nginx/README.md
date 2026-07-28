@@ -50,6 +50,7 @@ nginx/
 | `/api/transactions/*` | `transaction-service:3003/v1/transactions/*` |
 | `/api/payments/*` | `payment-service:3004/v1/payments/*` |
 | `/health/{service}` | corresponding service `/v1/health` |
+| `/metrics/{service}` | corresponding service `/v1/metrics` |
 
 `/internal` and `/internal/*` always return a JSON 403. Stripe and PayPal
 webhooks bypass Nginx rate limiting and disable both proxy response buffering
@@ -57,8 +58,8 @@ and request buffering.
 
 ## Local setup
 
-The checked-in certificate is for local development only. Regenerate it after
-changing `NGINX_HOST`:
+Development certificates are generated locally and are not tracked in Git.
+Regenerate them after changing `NGINX_HOST`:
 
 ```bash
 NGINX_HOST=localhost sh nginx/scripts/generate-certs.sh nginx/certs

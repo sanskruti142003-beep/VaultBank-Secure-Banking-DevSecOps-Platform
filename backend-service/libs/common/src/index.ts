@@ -13,4 +13,5 @@ export * from './http/base-http.service';
 export * from './infrastructure.module';
 export * from './interceptors/logging.interceptor';
 export * from './interceptors/transform.interceptor';
+export * from './metrics/metrics.service';
 export * from './types/auth.types';

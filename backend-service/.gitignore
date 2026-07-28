@@ -45,6 +45,10 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# Locally generated TLS material
+nginx/certs/*.crt
+nginx/certs/*.key
+
 # temp directory
 .temp
 .tmp

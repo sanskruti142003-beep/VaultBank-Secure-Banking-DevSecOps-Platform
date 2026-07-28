@@ -11,6 +11,14 @@ const certDir = path.resolve(
   __dirname,
   "../backend-service/nginx/certs",
 );
+const certKeyPath = path.join(certDir, "self-signed.key");
+const certPath = path.join(certDir, "self-signed.crt");
+const https = fs.existsSync(certKeyPath) && fs.existsSync(certPath)
+  ? {
+      key: fs.readFileSync(certKeyPath),
+      cert: fs.readFileSync(certPath),
+    }
+  : undefined;
 
 export default defineConfig({
   root: __dirname,
@@ -51,14 +59,7 @@ export default defineConfig({
     strictPort: true,
     port: 5173,
 
-    https: {
-      key: fs.readFileSync(
-        path.join(certDir, "self-signed.key"),
-      ),
-      cert: fs.readFileSync(
-        path.join(certDir, "self-signed.crt"),
-      ),
-    },
+    ...(https ? { https } : {}),
 
     proxy: {
       "/api": {
