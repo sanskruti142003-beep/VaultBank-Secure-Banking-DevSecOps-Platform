@@ -27,7 +27,10 @@ export function configureApp(app: INestApplication): void {
       .filter(Boolean) ?? defaultAllowedOrigins;
 
   app.enableCors({
-    origin(origin, callback) {
+    origin(
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) {
       callback(null, !origin || allowedOrigins.includes(origin));
     },
     credentials: true,

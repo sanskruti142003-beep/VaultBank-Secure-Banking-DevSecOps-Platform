@@ -1,7 +1,7 @@
 import { config as loadEnvFile } from 'dotenv';
+import axios from 'axios';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import nodeVault from 'node-vault';
 import { ServiceSecrets, VaultServiceName } from './vault.types';
 
 interface LoginResponse {
@@ -30,17 +30,18 @@ export async function loadVaultSecrets(
 ): Promise<ServiceSecrets> {
   prepareVaultEnvironment(serviceName);
 
-  const client = nodeVault({
-    apiVersion: 'v1',
-    endpoint: process.env.VAULT_ADDR,
+  const client = axios.create({
+    baseURL: `${requiredVaultAddr()}/v1`,
+    timeout: 10_000,
   });
 
   let login: LoginResponse;
   try {
-    login = (await client.approleLogin({
+    const response = await client.post<LoginResponse>('auth/approle/login', {
       role_id: process.env.VAULT_ROLE_ID,
       secret_id: process.env.VAULT_SECRET_ID,
-    })) as LoginResponse;
+    });
+    login = response.data;
   } catch (error: unknown) {
     throw new Error(
       [
@@ -52,14 +53,17 @@ export async function loadVaultSecrets(
   }
 
   process.env.VAULT_TOKEN = login.auth.client_token;
-  client.token = login.auth.client_token;
 
   const path = paths[serviceName] ?? serviceName;
   let response: SecretResponse;
   try {
-    response = (await client.read(
+    const result = await client.get<SecretResponse>(
       `secret/data/banking/${path}`,
-    )) as SecretResponse;
+      {
+        headers: { 'X-Vault-Token': login.auth.client_token },
+      },
+    );
+    response = result.data;
   } catch (error: unknown) {
     throw new Error(
       [
@@ -242,6 +246,17 @@ function describeVaultError(error: unknown): string {
     return String(error);
   }
 
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    const data = error.response?.data as { errors?: unknown } | undefined;
+    if (Array.isArray(data?.errors)) {
+      return `HTTP ${formatPrimitive(status)} ${data.errors
+        .map(formatPrimitive)
+        .join(', ')}`;
+    }
+    return status ? `HTTP ${status}` : error.message;
+  }
+
   const response = (error as { response?: unknown }).response;
   if (response && typeof response === 'object') {
     const statusCode = (response as { statusCode?: unknown }).statusCode;
@@ -264,6 +279,14 @@ function describeVaultError(error: unknown): string {
   }
 
   return 'unknown Vault error';
+}
+
+function requiredVaultAddr(): string {
+  const value = process.env.VAULT_ADDR?.replace(/\/+$/, '');
+  if (!value) {
+    throw new Error('VAULT_ADDR is required');
+  }
+  return value;
 }
 
 function formatPrimitive(value: unknown): string {

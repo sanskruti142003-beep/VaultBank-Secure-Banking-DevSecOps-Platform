@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import nodeVault from 'node-vault';
+import axios, { AxiosInstance } from 'axios';
 import { ServiceSecrets, VaultServiceName } from './vault.types';
 
 interface SecretResponse<T> {
@@ -13,10 +13,9 @@ interface RenewResponse {
 @Injectable()
 export class VaultService implements OnModuleDestroy {
   private readonly logger = new Logger(VaultService.name);
-  private readonly client = nodeVault({
-    apiVersion: 'v1',
-    endpoint: process.env.VAULT_ADDR,
-    token: process.env.VAULT_TOKEN,
+  private readonly client: AxiosInstance = axios.create({
+    baseURL: `${this.requiredVaultAddr()}/v1`,
+    timeout: 10_000,
   });
   private timer: NodeJS.Timeout | null = null;
 
@@ -24,12 +23,12 @@ export class VaultService implements OnModuleDestroy {
     serviceName: VaultServiceName,
   ): Promise<T> {
     try {
-      const path =
-        serviceName === 'notification-service' ? 'shared' : serviceName;
-      const result = (await this.client.read(
+      const path = serviceName;
+      const result = await this.client.get<SecretResponse<T>>(
         `secret/data/banking/${path}`,
-      )) as SecretResponse<T>;
-      return result.data.data;
+        this.requestConfig(),
+      );
+      return result.data.data.data;
     } catch (error: unknown) {
       this.logger.error('Failed to read Vault secrets');
       throw error;
@@ -38,13 +37,14 @@ export class VaultService implements OnModuleDestroy {
 
   async getSecret<T = string>(path: string, key: string): Promise<T> {
     try {
-      const result = (await this.client.read(
+      const result = await this.client.get<SecretResponse<Record<string, T>>>(
         `secret/data/banking/${path}`,
-      )) as SecretResponse<Record<string, T>>;
-      if (!(key in result.data.data)) {
+        this.requestConfig(),
+      );
+      if (!(key in result.data.data.data)) {
         throw new Error(`Secret ${key} not found at ${path}`);
       }
-      return result.data.data[key];
+      return result.data.data.data[key];
     } catch (error: unknown) {
       this.logger.error(`Failed to read Vault key ${key}`);
       throw error;
@@ -53,10 +53,12 @@ export class VaultService implements OnModuleDestroy {
 
   async renewToken(): Promise<void> {
     try {
-      const result = (await this.client.tokenRenewSelf({
-        increment: '1h',
-      })) as RenewResponse;
-      this.scheduleRenewal(result.auth?.lease_duration ?? 3600);
+      const result = await this.client.post<RenewResponse>(
+        'auth/token/renew-self',
+        { increment: '1h' },
+        this.requestConfig(),
+      );
+      this.scheduleRenewal(result.data.auth?.lease_duration ?? 3600);
     } catch (error: unknown) {
       this.logger.error('Vault token renewal failed');
       throw error;
@@ -78,8 +80,10 @@ export class VaultService implements OnModuleDestroy {
 
   async isHealthy(): Promise<boolean> {
     try {
-      const result = (await this.client.health()) as { sealed?: boolean };
-      return result.sealed === false;
+      const result = await this.client.get<{ sealed?: boolean }>('sys/health', {
+        validateStatus: (status) => status < 500,
+      });
+      return result.data.sealed === false;
     } catch {
       return false;
     }
@@ -89,5 +93,25 @@ export class VaultService implements OnModuleDestroy {
     if (this.timer) {
       clearInterval(this.timer);
     }
+  }
+
+  private requestConfig(): { headers: Record<string, string> } {
+    return { headers: { 'X-Vault-Token': this.requiredVaultToken() } };
+  }
+
+  private requiredVaultAddr(): string {
+    const value = process.env.VAULT_ADDR?.replace(/\/+$/, '');
+    if (!value) {
+      throw new Error('VAULT_ADDR is required');
+    }
+    return value;
+  }
+
+  private requiredVaultToken(): string {
+    const value = process.env.VAULT_TOKEN?.trim();
+    if (!value) {
+      throw new Error('VAULT_TOKEN is required');
+    }
+    return value;
   }
 }
