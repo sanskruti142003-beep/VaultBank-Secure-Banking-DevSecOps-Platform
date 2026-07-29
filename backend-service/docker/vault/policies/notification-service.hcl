@@ -1,3 +1,3 @@
-path "secret/data/banking/shared" {
+path "secret/data/banking/notification-service" {
   capabilities = ["read"]
 }

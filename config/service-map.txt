@@ -3,4 +3,5 @@ auth-service|backend|backend-service|backend-service/Dockerfile|SERVICE_NAME=aut
 account-service|backend|backend-service|backend-service/Dockerfile|SERVICE_NAME=account-service|/v1/health|/v1/metrics|NestJS monorepo app under backend-service/apps/account-service
 transaction-service|backend|backend-service|backend-service/Dockerfile|SERVICE_NAME=transaction-service|/v1/health|/v1/metrics|NestJS monorepo app under backend-service/apps/transaction-service
 payment-service|backend|backend-service|backend-service/Dockerfile|SERVICE_NAME=payment-service|/v1/health|/v1/metrics|NestJS monorepo app under backend-service/apps/payment-service
+notification-service|backend|backend-service|backend-service/Dockerfile|SERVICE_NAME=notification-service|/v1/health|/v1/metrics|NestJS monorepo app under backend-service/apps/notification-service
 frontend|frontend|frontend|frontend/Dockerfile||/health||Vite app served by Nginx production image

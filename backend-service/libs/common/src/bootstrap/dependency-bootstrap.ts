@@ -7,10 +7,30 @@ const DEPENDENCY_RETRY_DELAY_MS = Number(
   process.env.DEPENDENCY_RETRY_DELAY_MS ?? 3000,
 );
 
-export async function verifyDependencies(): Promise<void> {
-  await retryDependency('Redis', verifyRedis);
-  await retryDependency('RabbitMQ', verifyRabbitMq);
-  await retryDependency('Postgres', verifyPostgres);
+export interface DependencyChecks {
+  postgres?: boolean;
+  rabbitMq?: boolean;
+  redis?: boolean;
+}
+
+export async function verifyDependencies(
+  checks: DependencyChecks = {},
+): Promise<void> {
+  const enabled = {
+    postgres: checks.postgres ?? true,
+    rabbitMq: checks.rabbitMq ?? true,
+    redis: checks.redis ?? true,
+  };
+
+  if (enabled.redis) {
+    await retryDependency('Redis', verifyRedis);
+  }
+  if (enabled.rabbitMq) {
+    await retryDependency('RabbitMQ', verifyRabbitMq);
+  }
+  if (enabled.postgres) {
+    await retryDependency('Postgres', verifyPostgres);
+  }
 }
 
 async function verifyRedis(): Promise<void> {

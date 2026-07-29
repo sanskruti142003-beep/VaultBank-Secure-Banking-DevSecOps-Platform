@@ -191,21 +191,21 @@
       "user": "notification_svc",
       "vhost": "/banking-dev",
       "configure": "^notification\\.queue$",
-      "write": "^$",
+      "write": "^banking\\.events$",
       "read": "^notification\\.queue$"
     },
     {
       "user": "notification_svc",
       "vhost": "/banking-staging",
       "configure": "^notification\\.queue$",
-      "write": "^$",
+      "write": "^banking\\.events$",
       "read": "^notification\\.queue$"
     },
     {
       "user": "notification_svc",
       "vhost": "/banking-prod",
       "configure": "^notification\\.queue$",
-      "write": "^$",
+      "write": "^banking\\.events$",
       "read": "^notification\\.queue$"
     },
 
@@ -346,21 +346,21 @@
       "user": "notification_svc",
       "vhost": "/banking-dev",
       "exchange": "banking.events",
-      "write": "^$",
+      "write": "^audit\\.request$",
       "read": "^(user\\.registered|transaction\\.completed|payment\\.(success|failed))$"
     },
     {
       "user": "notification_svc",
       "vhost": "/banking-staging",
       "exchange": "banking.events",
-      "write": "^$",
+      "write": "^audit\\.request$",
       "read": "^(user\\.registered|transaction\\.completed|payment\\.(success|failed))$"
     },
     {
       "user": "notification_svc",
       "vhost": "/banking-prod",
       "exchange": "banking.events",
-      "write": "^$",
+      "write": "^audit\\.request$",
       "read": "^(user\\.registered|transaction\\.completed|payment\\.(success|failed))$"
     }
   ],

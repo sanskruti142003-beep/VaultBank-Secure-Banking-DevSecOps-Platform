@@ -15,3 +15,9 @@ reports/
 *.sarif
 *.spdx.json
 *.cdx.json
+
+# Terraform local state
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

@@ -12,9 +12,7 @@ interface SecretResponse {
   data: { data: ServiceSecrets };
 }
 
-const paths: Partial<Record<VaultServiceName, string>> = {
-  'notification-service': 'shared',
-};
+const paths: Partial<Record<VaultServiceName, string>> = {};
 
 const environmentPrefixes: Record<VaultServiceName, string> = {
   'auth-service': 'AUTH_SERVICE',

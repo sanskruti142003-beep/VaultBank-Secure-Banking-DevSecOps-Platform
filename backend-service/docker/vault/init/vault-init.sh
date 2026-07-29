@@ -128,7 +128,7 @@ vault kv put secret/banking/audit-service \
   REDIS_URL="redis://:${REDIS_PASSWORD}@${redis_host}:${redis_port}/1" \
   RABBITMQ_URL="amqp://audit_svc:${AUDIT_SVC_RABBITMQ_PASSWORD}@${rabbitmq_host}:${rabbitmq_port}/${rabbitmq_vhost}"
 
-vault kv put secret/banking/shared \
+vault kv put secret/banking/notification-service \
   REDIS_URL="redis://:${REDIS_PASSWORD}@${redis_host}:${redis_port}/1" \
   RABBITMQ_URL="amqp://notification_svc:${NOTIFICATION_SVC_RABBITMQ_PASSWORD}@${rabbitmq_host}:${rabbitmq_port}/${rabbitmq_vhost}" \
   SMTP_HOST="$SMTP_HOST" \

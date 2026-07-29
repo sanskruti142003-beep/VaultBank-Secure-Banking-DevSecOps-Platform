@@ -1,18 +1,22 @@
-# Architecture Gaps
+# Architecture Gap Status
 
 ## Notification Service
 
-Status: planned
+Status: implemented
 
-The infrastructure reserves Vault, RabbitMQ, and dead-letter queue settings for
-`notification-service`, but there is no deployable NestJS application for it in
-the current monorepo.
+`notification-service` is now a deployable NestJS application in the monorepo.
+It consumes `notification.queue`, exposes `/v1/health` and `/v1/metrics`, and is
+wired into Docker Compose, Vault policy/bootstrap, RabbitMQ definitions, and the
+service map.
 
-Phase 1 treats notification delivery as an architecture gap rather than a
-pipeline-blocking service. Add it to `config/service-map.txt` only after the
-service has a real `backend-service/apps/notification-service` project,
-Docker build target, health endpoint, metrics endpoint, and structured stdout
-logging.
+Current limitation: payment and transaction events do not always include a
+recipient email address, so the service logs a structured skipped delivery until
+those events are enriched or a customer-profile lookup is added.
 
-Current notification-related behavior is handled inside existing services, such
-as auth OTP email and payment OTP email.
+## Production Readiness
+
+Status: configured, not automatically promoted
+
+Local Docker Compose remains a development/POC environment. Production must use
+the production Vault configuration and the frontend S3/CloudFront stack instead
+of treating the EC2 POC as compliant production.

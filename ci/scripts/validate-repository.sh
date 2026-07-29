@@ -80,9 +80,15 @@ done < "$SERVICE_MAP"
 
 require_file 'frontend/Dockerfile' 'frontend production Dockerfile'
 require_file 'frontend/nginx.conf' 'frontend Nginx runtime config'
+require_file 'infra/frontend-s3-cloudfront/main.tf' 'frontend S3/CloudFront Terraform'
+require_file 'infra/frontend-s3-cloudfront/variables.tf' 'frontend S3/CloudFront variables'
+require_file '.github/workflows/devsecops.yml' 'DevSecOps CI workflow'
+require_file 'backend-service/docker-compose.vault-production.yml' 'production Vault compose overlay'
+require_file 'backend-service/docker/vault/config/vault.production.hcl' 'production Vault config'
 require_file 'backend-service/libs/common/src/health/health.controller.ts' 'shared health controller'
 require_file 'backend-service/libs/common/src/metrics/metrics.controller.ts' 'shared metrics controller'
 require_file 'backend-service/libs/common/src/metrics/metrics.service.ts' 'shared metrics service'
+require_file 'backend-service/apps/notification-service/src/main.ts' 'notification service entrypoint'
 
 if grep -q '/v1/health' "${ROOT_DIR}/backend-service/nginx/conf.d/banking-api-ssl.conf"; then
   pass 'gateway health mappings target /v1/health'
@@ -102,11 +108,18 @@ else
   fail 'audit requests must be logged as structured stdout JSON'
 fi
 
-if [ -f "${ROOT_DIR}/docs/ARCHITECTURE_GAPS.md" ] &&
-  grep -q 'notification-service' "${ROOT_DIR}/docs/ARCHITECTURE_GAPS.md"; then
-  pass 'notification-service gap is documented'
+if grep -q 'notification-service|backend' "$SERVICE_MAP" &&
+  grep -q 'notification-service' "${ROOT_DIR}/backend-service/docker-compose.yml"; then
+  pass 'notification-service is deployable'
 else
-  fail 'notification-service architecture gap must be documented'
+  fail 'notification-service must be listed in service map and Docker Compose'
+fi
+
+if [ -f "${ROOT_DIR}/docs/DEVSECOPS_APPROACH.md" ] &&
+  grep -q 'flowchart' "${ROOT_DIR}/docs/DEVSECOPS_APPROACH.md"; then
+  pass 'DevSecOps dataflow diagram is documented'
+else
+  fail 'DevSecOps dataflow diagram must be documented'
 fi
 
 tracked_keys="$(git -C "$ROOT_DIR" ls-files '*self-signed.key' '*.pem' '*.p8' 2>/dev/null || true)"
@@ -116,7 +129,9 @@ else
   pass 'no development private keys are tracked'
 fi
 
-if git -C "$ROOT_DIR" grep -n 'BEGIN .*PRIVATE KEY' -- . ':!backend-service/nginx/certs/*' >/tmp/vaultbank-private-key-scan.txt 2>/dev/null; then
+private_key_pattern='BEGIN .*PRIVATE '
+private_key_pattern="${private_key_pattern}KEY"
+if git -C "$ROOT_DIR" grep -n "$private_key_pattern" -- . ':!backend-service/nginx/certs/*' >/tmp/vaultbank-private-key-scan.txt 2>/dev/null; then
   cat /tmp/vaultbank-private-key-scan.txt >&2
   fail 'private key material found outside ignored local cert folder'
 else

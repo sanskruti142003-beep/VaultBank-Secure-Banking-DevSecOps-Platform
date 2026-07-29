@@ -23,12 +23,19 @@ export class HealthController {
   @Get()
   @HealthCheck()
   check(): Promise<HealthCheckResult> {
-    return this.health.check([
-      () => this.database.pingCheck('database', { timeout: 3000 }),
+    const indicators = [
       () => this.status('redis', () => this.cache.isHealthy()),
       () => this.status('rabbitmq', () => this.events.isConnected()),
       () => this.status('vault', () => this.vault.isHealthy()),
-    ]);
+    ];
+
+    if (process.env.HEALTH_DATABASE_ENABLED !== 'false') {
+      indicators.unshift(() =>
+        this.database.pingCheck('database', { timeout: 3000 }),
+      );
+    }
+
+    return this.health.check(indicators);
   }
 
   private async status(

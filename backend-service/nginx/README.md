@@ -52,6 +52,9 @@ nginx/
 | `/health/{service}` | corresponding service `/v1/health` |
 | `/metrics/{service}` | corresponding service `/v1/metrics` |
 
+Supported health and metrics service names are `auth`, `accounts`,
+`transactions`, `payments`, and `notifications`.
+
 `/internal` and `/internal/*` always return a JSON 403. Stripe and PayPal
 webhooks bypass Nginx rate limiting and disable both proxy response buffering
 and request buffering.

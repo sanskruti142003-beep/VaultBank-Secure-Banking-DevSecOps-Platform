@@ -406,6 +406,47 @@ services:
     networks:
       - banking-network
 
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: notification-service
+    container_name: banking-notification-service
+    restart: unless-stopped
+    environment:
+      APP_RUNTIME: docker
+      PORT: 3005
+      HEALTH_DATABASE_ENABLED: 'false'
+      VAULT_ADDR: http://vault:8200
+      VAULT_ROLE_ID: ${NOTIFICATION_SERVICE_VAULT_ROLE_ID:?Run vault:init and copy NOTIFICATION_SERVICE_VAULT_ROLE_ID into .env}
+      VAULT_SECRET_ID: ${NOTIFICATION_SERVICE_VAULT_SECRET_ID:?Run vault:init and copy NOTIFICATION_SERVICE_VAULT_SECRET_ID into .env}
+    expose:
+      - '3005'
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3005/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - banking-network
+
   nginx:
     build:
       context: ./nginx
@@ -432,6 +473,8 @@ services:
       transaction-service:
         condition: service_healthy
       payment-service:
+        condition: service_healthy
+      notification-service:
         condition: service_healthy
     healthcheck:
       test: ['CMD', 'nginx', '-t']

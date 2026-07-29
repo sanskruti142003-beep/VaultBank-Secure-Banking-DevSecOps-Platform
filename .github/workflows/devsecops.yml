@@ -1,0 +1,79 @@
+name: DevSecOps
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  validate:
+    name: Validate and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend-service/package-lock.json
+            frontend/package-lock.json
+
+      - name: Validate repository structure
+        run: bash ci/scripts/validate-repository.sh
+
+      - name: Install backend dependencies
+        working-directory: backend-service
+        run: npm ci --legacy-peer-deps
+
+      - name: Build backend services
+        working-directory: backend-service
+        run: npm run build:all
+
+      - name: Test backend
+        working-directory: backend-service
+        run: npm test
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Backend dependency audit
+        working-directory: backend-service
+        run: npm audit --audit-level=high
+
+      - name: Frontend dependency audit
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+  security:
+    name: Security scans
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform format check
+        run: terraform -chdir=infra/frontend-s3-cloudfront fmt -check

@@ -1,6 +1,6 @@
 # Banking microservices
 
-NestJS 10 monorepo containing four independently deployable services:
+NestJS 10 monorepo containing five independently deployable services:
 
 | Service | Port | Database |
 | --- | ---: | --- |
@@ -8,6 +8,7 @@ NestJS 10 monorepo containing four independently deployable services:
 | Account | 3002 | `account_db` |
 | Transaction | 3003 | `transaction_db` |
 | Payment | 3004 | `payment_db` |
+| Notification | 3005 | none |
 
 Nginx is the only public application entry point:
 
@@ -35,10 +36,11 @@ npm run start:auth:dev
 npm run start:account:dev
 npm run start:transaction:dev
 npm run start:payment:dev
+npm run start:notification:dev
 ```
 
-Each service loads its database, Redis, RabbitMQ, JWT, and gateway secrets from
-Vault before Nest imports its application module.
+Each service loads its Redis, RabbitMQ, database, JWT, and gateway secrets from
+Vault before Nest imports its application module. Notification has no database.
 
 ## Docker Compose
 
@@ -67,13 +69,23 @@ Vault before Nest imports its application module.
 6. Build and start all application containers and the gateway:
 
    ```bash
-   docker compose up -d --build auth-service account-service transaction-service payment-service
+   docker compose up -d --build auth-service account-service transaction-service payment-service notification-service
    docker compose up -d --build nginx
    ```
 
-Application ports 3001–3004 are private to `banking-network`. PostgreSQL,
+Application ports 3001-3005 are private to `banking-network`. PostgreSQL,
 Redis, RabbitMQ, and Vault development ports bind only to loopback. Public API
 traffic enters through Nginx on ports 80 and 443.
+
+For production Vault, do not use the local development `server -dev` command.
+Use the production overlay as a starting point:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.vault-production.yml up -d vault
+```
+
+Initialize, unseal, and rotate production Vault credentials through the approved
+operations process before starting application services.
 
 Gateway configuration and tests are documented in
 [`nginx/README.md`](nginx/README.md).
@@ -111,7 +123,7 @@ npm run migration:run:user
 
 Equivalent commands exist for Account, Transaction, and Payment:
 `migration:run:account`, `migration:run:transaction`, and
-`migration:run:payment`.
+`migration:run:payment`. Notification has no service database.
 
 ## Tests and quality
 
@@ -130,9 +142,12 @@ standalone Nest test applications and never connect to the real databases.
 
 All services publish persistent envelopes to the `banking.events` topic
 exchange. Audit events route to `audit.queue`; transaction outcomes also route
-to `payment.queue`. Payment consumes `transaction.completed` and
+to `payment.queue`; user, transaction, and payment notification events route to
+`notification.queue`. Payment consumes `transaction.completed` and
 `transaction.failed`, generates receipts, and publishes payment outcome events.
-Permanent consumer errors are dead-lettered; transient errors are requeued.
+Notification consumes delivery events and sends email when the event carries a
+recipient address. Permanent consumer errors are dead-lettered; transient errors
+are requeued.
 
 Queue definitions and least-privilege topic permissions are in
 `docker/rabbitmq/definitions.json`.
