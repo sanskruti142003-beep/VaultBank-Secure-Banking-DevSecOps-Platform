@@ -81,7 +81,7 @@
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "stripe": "20.1.0",
-    "typeorm": "0.3.30"
+    "typeorm": "0.3.31"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.1",
@@ -150,6 +150,8 @@
   },
   "overrides": {
     "multer": "2.2.0",
-    "semver": "7.8.5"
+    "semver": "7.8.5",
+    "brace-expansion": "5.0.8",
+    "js-yaml": "5.2.2"
   }
 }
