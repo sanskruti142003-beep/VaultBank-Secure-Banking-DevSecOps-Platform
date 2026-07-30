@@ -25,6 +25,7 @@ require_command() {
 assert_version() {
   local tool="$1"
   local expected="$2"
+
   shift 2
 
   local output
@@ -52,6 +53,7 @@ require_command trufflehog
 require_command trivy
 require_command syft
 require_command cosign
+require_command sonar-scanner
 
 assert_version \
   "trufflehog" \
@@ -73,11 +75,17 @@ assert_version \
   "${COSIGN_VERSION}" \
   cosign version
 
+assert_version \
+  "sonar-scanner" \
+  "${SONAR_SCANNER_VERSION}" \
+  sonar-scanner --version
+
 sha256sum \
   "$(command -v trufflehog)" \
   "$(command -v trivy)" \
   "$(command -v syft)" \
   "$(command -v cosign)" \
+  "$(command -v sonar-scanner)" \
   > "${REPORT_DIR}/binary-sha256.txt"
 
 echo "PASS: all security tool versions match repository policy"

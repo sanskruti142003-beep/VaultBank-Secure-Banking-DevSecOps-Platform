@@ -151,7 +151,31 @@ pipeline {
       }
     }
 
-    stage('07 Final evidence check') {
+    stage('07 SonarQube Cloud SAST quality gate') {
+      when {
+        branch 'main'
+      }
+
+      steps {
+        withCredentials([
+          string(
+            credentialsId: 'sonarcloud-token',
+            variable: 'SONAR_TOKEN'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+
+            export SONAR_USER_HOME=/var/lib/jenkins/.sonar
+            export SONAR_QUALITY_GATE_TIMEOUT=300
+
+            bash ci/scripts/run-sonar.sh
+          '''
+        }
+      }
+    }
+
+    stage('08 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
