@@ -2,42 +2,109 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # shellcheck source=ci/scripts/devsecops-common.sh
 source "${SCRIPT_DIR}/devsecops-common.sh"
 
-use_phase_report_dir "phase-04-sonarqube"
+use_phase_report_dir "phase-04-sonarcloud"
+
+VERSIONS_FILE="${ROOT_DIR}/config/tool-versions.env"
+PROJECT_PROPERTIES="${ROOT_DIR}/sonar-project.properties"
+LCOV_REPORT="${ROOT_DIR}/backend-service/coverage/lcov.info"
+
+[ -f "${VERSIONS_FILE}" ] ||
+  die "Missing tool-version policy: ${VERSIONS_FILE}"
+
+# shellcheck disable=SC1090
+source "${VERSIONS_FILE}"
 
 SONAR_TOKEN="${SONAR_TOKEN:-}"
 SONAR_HOST_URL="${SONAR_HOST_URL:-https://sonarcloud.io}"
-SONAR_ORGANIZATION="${SONAR_ORGANIZATION:-}"
-SONAR_SCANNER_IMAGE="${SONAR_SCANNER_IMAGE:-sonarsource/sonar-scanner-cli:latest}"
+SONAR_USER_HOME="${SONAR_USER_HOME:-${HOME}/.sonar}"
+SONAR_QUALITY_GATE_TIMEOUT="${SONAR_QUALITY_GATE_TIMEOUT:-300}"
 
-[ -n "${SONAR_TOKEN}" ] || die "SONAR_TOKEN is required from Jenkins credential sonarqube-token"
-[ -f "${ROOT_DIR}/sonar-project.properties" ] || die "sonar-project.properties is required"
+[ -n "${SONAR_TOKEN}" ] ||
+  die "SONAR_TOKEN is required from Jenkins credential sonarcloud-token"
 
-scanner_args=(
-  "-Dsonar.host.url=${SONAR_HOST_URL}"
-  "-Dsonar.projectVersion=$(ci_image_tag)"
-)
+[ -f "${PROJECT_PROPERTIES}" ] ||
+  die "Missing sonar-project.properties"
 
-if [ -n "${SONAR_ORGANIZATION}" ]; then
-  scanner_args+=("-Dsonar.organization=${SONAR_ORGANIZATION}")
+[ -s "${LCOV_REPORT}" ] ||
+  die "Missing or empty LCOV report: ${LCOV_REPORT}"
+
+require_command sonar-scanner
+require_command sha256sum
+require_command awk
+require_command grep
+
+project_key="$(
+  awk -F= \
+    '$1 == "sonar.projectKey" {
+      print substr($0, index($0, "=") + 1)
+      exit
+    }' \
+    "${PROJECT_PROPERTIES}"
+)"
+
+organization_key="$(
+  awk -F= \
+    '$1 == "sonar.organization" {
+      print substr($0, index($0, "=") + 1)
+      exit
+    }' \
+    "${PROJECT_PROPERTIES}"
+)"
+
+[ -n "${project_key}" ] ||
+  die "sonar.projectKey is missing"
+
+[ -n "${organization_key}" ] ||
+  die "sonar.organization is missing"
+
+scanner_version_output="$(sonar-scanner --version 2>&1)"
+
+printf '%s\n' "${scanner_version_output}" \
+  > "${REPORT_DIR}/sonar-scanner-version.txt"
+
+if ! printf '%s\n' "${scanner_version_output}" |
+     grep -Fq "${SONAR_SCANNER_VERSION}"; then
+  die \
+    "SonarScanner version mismatch: expected ${SONAR_SCANNER_VERSION}"
 fi
+
+mkdir -p "${SONAR_USER_HOME}"
+
+sha256sum "${LCOV_REPORT}" \
+  > "${REPORT_DIR}/lcov-sha256.txt"
+
+wc -c "${LCOV_REPORT}" \
+  > "${REPORT_DIR}/lcov-size.txt"
+
+printf 'projectKey=%s\norganization=%s\nhost=%s\n' \
+  "${project_key}" \
+  "${organization_key}" \
+  "${SONAR_HOST_URL}" \
+  > "${REPORT_DIR}/sonar-analysis-metadata.txt"
+
+export SONAR_TOKEN
+export SONAR_USER_HOME
 
 cd "${ROOT_DIR}"
-if command -v sonar-scanner >/dev/null 2>&1; then
-  SONAR_TOKEN="${SONAR_TOKEN}" run_logged "sonar-analysis" sonar-scanner \
-    "-Dsonar.projectBaseDir=${ROOT_DIR}" \
-    "${scanner_args[@]}"
-else
-  require_command docker
-  docker pull "${SONAR_SCANNER_IMAGE}" > "${REPORT_DIR}/sonar-pull.log" 2> "${REPORT_DIR}/sonar-pull.err.log"
-  run_logged "sonar-analysis" docker run --rm \
-    -e SONAR_TOKEN="${SONAR_TOKEN}" \
-    -v "${ROOT_DIR}:/usr/src:ro" \
-    "${SONAR_SCANNER_IMAGE}" \
-    "-Dsonar.projectBaseDir=/usr/src" \
-    "${scanner_args[@]}"
+
+run_logged \
+  "sonar-analysis-and-quality-gate" \
+  sonar-scanner \
+  "-Dsonar.host.url=${SONAR_HOST_URL}" \
+  "-Dsonar.projectVersion=$(ci_image_tag)" \
+  "-Dsonar.qualitygate.wait=true" \
+  "-Dsonar.qualitygate.timeout=${SONAR_QUALITY_GATE_TIMEOUT}"
+
+if [ -f "${ROOT_DIR}/.scannerwork/report-task.txt" ]; then
+  cp \
+    "${ROOT_DIR}/.scannerwork/report-task.txt" \
+    "${REPORT_DIR}/report-task.txt"
 fi
 
-log "PASS: SonarQube analysis submitted"
+unset SONAR_TOKEN
+
+log "PASS: SonarQube Cloud analysis and Quality Gate passed"

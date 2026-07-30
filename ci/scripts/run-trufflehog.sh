@@ -8,7 +8,7 @@ source "${SCRIPT_DIR}/devsecops-common.sh"
 use_phase_report_dir "phase-03-trufflehog"
 
 MODE="${1:-all}"
-TRUFFLEHOG_IMAGE="${TRUFFLEHOG_IMAGE:-trufflesecurity/trufflehog:latest}"
+TRUFFLEHOG_IMAGE="${TRUFFLEHOG_IMAGE:-trufflesecurity/trufflehog:3.96.0}"
 EXCLUDE_FILE="${REPORT_DIR}/exclude-paths.txt"
 SANITIZED_SUMMARY="${REPORT_DIR}/sanitized-summary.jsonl"
 
@@ -62,7 +62,22 @@ run_trufflehog_scan() {
   rc=$?
   set -e
   chmod 600 "${output}" "${output%.jsonl}.err.log" 2>/dev/null || true
+
+  set +e
   sanitize_jsonl "${output}" "${label}"
+  sanitize_rc=$?
+
+  if command -v shred >/dev/null 2>&1; then
+    shred --force --remove "${output}" 2>/dev/null || rm -f "${output}"
+  else
+    rm -f "${output}"
+  fi
+
+  set -e
+
+  if [ "${sanitize_rc}" -ne 0 ]; then
+    die "${label} could not create a sanitized report"
+  fi
 
   case "${rc}" in
     0)

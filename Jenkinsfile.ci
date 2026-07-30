@@ -1,0 +1,223 @@
+pipeline {
+  agent any
+
+  options {
+    skipDefaultCheckout(true)
+    timestamps()
+    disableConcurrentBuilds()
+    timeout(time: 60, unit: 'MINUTES')
+    buildDiscarder(
+      logRotator(
+        numToKeepStr: '20',
+        artifactNumToKeepStr: '10'
+      )
+    )
+  }
+
+  environment {
+    NODE_OPTIONS = '--max-old-space-size=1024'
+    CI = 'true'
+  }
+
+  stages {
+    stage('01 Checkout') {
+      steps {
+        cleanWs(deleteDirs: true)
+
+        checkout scm
+
+        sh '''
+          set -Eeuo pipefail
+
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow --tags origin
+          else
+            git fetch --tags --force --prune origin
+          fi
+
+          mkdir -p reports/phase-02-ci-baseline
+
+          git rev-parse HEAD |
+            tee reports/phase-02-ci-baseline/git-commit.txt
+
+          git branch --show-current |
+            tee reports/phase-02-ci-baseline/git-branch.txt
+
+          git status --porcelain |
+            tee reports/phase-02-ci-baseline/git-status-before.txt
+
+          node --version |
+            tee reports/phase-02-ci-baseline/node-version.txt
+
+          npm --version |
+            tee reports/phase-02-ci-baseline/npm-version.txt
+        '''
+      }
+    }
+
+    stage('02 Repository validation') {
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          bash ci/scripts/validate-repository.sh 2>&1 |
+            tee reports/phase-02-ci-baseline/repository-validation.log
+
+          bash ci/scripts/validate-all-files.sh 2>&1 |
+            tee reports/phase-02-ci-baseline/file-hygiene.log
+
+          git diff --check
+        '''
+      }
+    }
+
+    stage('03 Pinned security tool verification') {
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          bash ci/scripts/verify-tool-versions.sh
+        '''
+      }
+    }
+
+    stage('04 TruffleHog verified-secret gate') {
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          bash ci/scripts/run-trufflehog.sh all
+        '''
+      }
+    }
+
+    stage('05 Backend quality gates') {
+      steps {
+        dir('backend-service') {
+          sh '''
+            set -Eeuo pipefail
+
+            npm ci --legacy-peer-deps 2>&1 |
+              tee ../reports/phase-02-ci-baseline/backend-npm-ci.log
+
+            npm run lint:check 2>&1 |
+              tee ../reports/phase-02-ci-baseline/backend-lint.log
+
+            npm run build:all 2>&1 |
+              tee ../reports/phase-02-ci-baseline/backend-build.log
+
+            npm test 2>&1 |
+              tee ../reports/phase-02-ci-baseline/backend-tests.log
+
+            npm run test:cov:all 2>&1 |
+              tee ../reports/phase-02-ci-baseline/backend-coverage.log
+
+            npm audit --audit-level=high 2>&1 |
+              tee ../reports/phase-02-ci-baseline/backend-npm-audit.log
+
+            git diff --exit-code -- \
+              package.json \
+              package-lock.json
+          '''
+        }
+      }
+    }
+
+    stage('06 Frontend quality gates') {
+      steps {
+        dir('frontend') {
+          sh '''
+            set -Eeuo pipefail
+
+            npm ci 2>&1 |
+              tee ../reports/phase-02-ci-baseline/frontend-npm-ci.log
+
+            npm run typecheck 2>&1 |
+              tee ../reports/phase-02-ci-baseline/frontend-typecheck.log
+
+            npm run build 2>&1 |
+              tee ../reports/phase-02-ci-baseline/frontend-build.log
+
+            npm audit --audit-level=high 2>&1 |
+              tee ../reports/phase-02-ci-baseline/frontend-npm-audit.log
+
+            test -s dist/index.html
+
+            git diff --exit-code -- \
+              package.json \
+              package-lock.json
+          '''
+        }
+      }
+    }
+
+    stage('07 SonarQube Cloud SAST quality gate') {
+      when {
+        branch 'main'
+      }
+
+      steps {
+        withCredentials([
+          string(
+            credentialsId: 'sonarcloud-token',
+            variable: 'SONAR_TOKEN'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+
+            export SONAR_USER_HOME=/var/lib/jenkins/.sonar
+            export SONAR_QUALITY_GATE_TIMEOUT=300
+
+            bash ci/scripts/run-sonar.sh
+          '''
+        }
+      }
+    }
+
+    stage('08 Final evidence check') {
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          git status --porcelain --untracked-files=no |
+            tee reports/phase-02-ci-baseline/git-status-after.txt
+
+          test ! -s \
+            reports/phase-02-ci-baseline/git-status-after.txt
+
+          if [ -f backend-service/coverage/coverage-summary.json ]; then
+            cp \
+              backend-service/coverage/coverage-summary.json \
+              reports/phase-02-ci-baseline/
+          fi
+
+          echo "PASS: CI-only quality baseline completed"
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts(
+        artifacts: 'reports/**,backend-service/coverage/**',
+        allowEmptyArchive: true,
+        fingerprint: true
+      )
+
+      cleanWs(
+        deleteDirs: true,
+        notFailBuild: true
+      )
+    }
+
+    failure {
+      echo 'NO-GO: the CI baseline failed. Do not merge this change.'
+    }
+
+    success {
+      echo 'GO: repository, backend and frontend CI baseline passed.'
+    }
+  }
+}

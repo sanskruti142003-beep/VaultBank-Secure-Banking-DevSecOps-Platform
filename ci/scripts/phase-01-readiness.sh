@@ -2,6 +2,14 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+TOOL_VERSIONS_FILE="${ROOT_DIR}/config/tool-versions.env"
+
+if [ -f "${TOOL_VERSIONS_FILE}" ]; then
+  # shellcheck disable=SC1090
+  source "${TOOL_VERSIONS_FILE}"
+fi
+
+TRUFFLEHOG_IMAGE="${TRUFFLEHOG_IMAGE:-trufflesecurity/trufflehog:3.96.0}"
 REPORT_ROOT="${ROOT_DIR}/reports/phase-01"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 REPORT_DIR="${REPORT_ROOT}/${RUN_ID}"
@@ -96,6 +104,24 @@ write_environment_report() {
   } > "${REPORT_DIR}/environment.txt"
 
   git status --short > "${REPORT_DIR}/git-status.txt" 2>/dev/null || true
+}
+
+check_working_tree() {
+  local status
+
+  status="$(git status --porcelain --untracked-files=normal)"
+
+  if [ -n "${status}" ]; then
+    printf '%s\n' "${status}" \
+      > "${REPORT_DIR}/git-status-dirty.txt"
+
+    warn \
+      "working tree is not clean; review ${REPORT_DIR}/git-status-dirty.txt"
+
+    return 0
+  fi
+
+  pass "working tree is clean"
 }
 
 check_snapshot_and_backup() {
@@ -229,7 +255,7 @@ resolve_trufflehog() {
   fi
 
   TRUFFLEHOG_MODE="docker"
-  TRUFFLEHOG_IMAGE="${TRUFFLEHOG_IMAGE:-trufflesecurity/trufflehog:latest}"
+  TRUFFLEHOG_IMAGE="${TRUFFLEHOG_IMAGE:-trufflesecurity/trufflehog:3.96.0}"
 
   if [ "${PHASE01_PULL_TRUFFLEHOG:-1}" = "1" ]; then
     docker pull "${TRUFFLEHOG_IMAGE}" \
@@ -285,7 +311,7 @@ check_trufflehog_scans() {
   local repo_parent repo_name
 
   if ! resolve_trufflehog; then
-    note "TruffleHog is not available. Install trufflehog or allow Docker to pull trufflesecurity/trufflehog:latest."
+    note "TruffleHog is not available. Install trufflehog or allow Docker to pull ${TRUFFLEHOG_IMAGE}."
     fail "TruffleHog current-tree scan"
     fail "TruffleHog full-history scan"
     return 1
@@ -590,6 +616,7 @@ for command_name in git bash node npm docker curl df; do
 done
 
 write_environment_report
+check_working_tree
 
 check_snapshot_and_backup
 check_filesystem_capacity

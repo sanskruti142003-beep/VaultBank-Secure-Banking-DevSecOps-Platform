@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/devsecops-common.sh"
 
 use_phase_report_dir "phase-06-trivy-fs"
 
-TRIVY_IMAGE="${TRIVY_IMAGE:-aquasec/trivy:latest}"
+TRIVY_IMAGE="${TRIVY_IMAGE:-aquasec/trivy:0.72.0}"
 TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-${ROOT_DIR}/.trivy-cache}"
 TRIVY_IGNORE_FILE="${ROOT_DIR}/.trivyignore.yaml"
 

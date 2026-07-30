@@ -5,6 +5,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=ci/scripts/devsecops-common.sh
 source "${SCRIPT_DIR}/devsecops-common.sh"
 
+TOOL_VERSIONS_FILE="${ROOT_DIR}/config/tool-versions.env"
+
+if [ -f "${TOOL_VERSIONS_FILE}" ]; then
+  # shellcheck disable=SC1090
+  source "${TOOL_VERSIONS_FILE}"
+fi
+
+SYFT_IMAGE="${SYFT_IMAGE:-anchore/syft:v1.50.0}"
+
 IMAGE_LIST="${IMAGE_LIST:-${REPORT_DIR}/images.txt}"
 SBOM_DIR="${REPORT_DIR}/sbom"
 COSIGN_YES="${COSIGN_YES:-true}"
@@ -48,7 +57,7 @@ while IFS= read -r image; do
     run_logged "syft-sbom-${safe_name}" docker run --rm \
       -v /var/run/docker.sock:/var/run/docker.sock \
       -v "${SBOM_DIR}:/sbom" \
-      anchore/syft:latest "${image}" \
+      "${SYFT_IMAGE}" "${image}" \
       -o "cyclonedx-json=/sbom/${safe_name}.cdx.json"
   fi
 
