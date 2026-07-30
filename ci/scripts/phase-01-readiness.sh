@@ -2,6 +2,14 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+TOOL_VERSIONS_FILE="${ROOT_DIR}/config/tool-versions.env"
+
+if [ -f "${TOOL_VERSIONS_FILE}" ]; then
+  # shellcheck disable=SC1090
+  source "${TOOL_VERSIONS_FILE}"
+fi
+
+TRUFFLEHOG_IMAGE="${TRUFFLEHOG_IMAGE:-trufflesecurity/trufflehog:3.96.0}"
 REPORT_ROOT="${ROOT_DIR}/reports/phase-01"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 REPORT_DIR="${REPORT_ROOT}/${RUN_ID}"
@@ -229,7 +237,7 @@ resolve_trufflehog() {
   fi
 
   TRUFFLEHOG_MODE="docker"
-  TRUFFLEHOG_IMAGE="${TRUFFLEHOG_IMAGE:-trufflesecurity/trufflehog:latest}"
+  TRUFFLEHOG_IMAGE="${TRUFFLEHOG_IMAGE:-trufflesecurity/trufflehog:3.96.0}"
 
   if [ "${PHASE01_PULL_TRUFFLEHOG:-1}" = "1" ]; then
     docker pull "${TRUFFLEHOG_IMAGE}" \
@@ -285,7 +293,7 @@ check_trufflehog_scans() {
   local repo_parent repo_name
 
   if ! resolve_trufflehog; then
-    note "TruffleHog is not available. Install trufflehog or allow Docker to pull trufflesecurity/trufflehog:latest."
+    note "TruffleHog is not available. Install trufflehog or allow Docker to pull ${TRUFFLEHOG_IMAGE}."
     fail "TruffleHog current-tree scan"
     fail "TruffleHog full-history scan"
     return 1
