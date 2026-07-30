@@ -32,6 +32,9 @@ jobs:
       - name: Validate repository structure
         run: bash ci/scripts/validate-repository.sh
 
+      - name: Validate all tracked files
+        run: bash ci/scripts/validate-all-files.sh
+
       - name: Install backend dependencies
         working-directory: backend-service
         run: npm ci --legacy-peer-deps
@@ -75,6 +78,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: false
+
+      - name: Validate all tracked files
+        run: bash ci/scripts/validate-all-files.sh
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
