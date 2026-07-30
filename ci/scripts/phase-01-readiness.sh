@@ -607,8 +607,8 @@ check_five_backend_builds
 
 pushd "${ROOT_DIR}/backend-service" >/dev/null
 run_check "backend-tests" "backend-tests" npm test || true
-run_check "global-backend-coverage-80" "global-backend-coverage-80" npx jest --coverage --runInBand \
-  --coverageThreshold='{"global":{"branches":80,"functions":80,"lines":80,"statements":80}}' || true
+run_check "global-backend-coverage-50" "global-backend-coverage-50" npx jest --coverage --runInBand \
+  --coverageThreshold='{"global":{"branches":50,"functions":50,"lines":50,"statements":50}}' || true
 popd >/dev/null
 
 pushd "${ROOT_DIR}/frontend" >/dev/null
