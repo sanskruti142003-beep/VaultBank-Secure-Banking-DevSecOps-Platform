@@ -179,6 +179,7 @@ check_forbidden_content() {
   local ok=1
   local tracked_secret_files
   local forbidden_pattern
+  local private_key_header_pattern
 
   tracked_secret_files="$(
     git ls-files |
@@ -191,7 +192,9 @@ check_forbidden_content() {
     ok=0
   fi
 
-  forbidden_pattern='patilsonalias002@gmail\.com|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|BEGIN [A-Z0-9 ]*PRIVATE KEY'
+  private_key_header_pattern='BEGIN [A-Z0-9 ]*PRIVATE '
+  private_key_header_pattern="${private_key_header_pattern}KEY"
+  forbidden_pattern="patilsonalias002@gmail\\.com|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|${private_key_header_pattern}"
   if git grep -I -nE "${forbidden_pattern}" -- \
     . \
     ':!reports/**' \
