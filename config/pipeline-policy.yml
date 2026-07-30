@@ -1,0 +1,44 @@
+version: 1
+node_major: 22
+service_map: config/service-map.txt
+
+quality_gates:
+  backend_global_coverage_minimum:
+    statements: 80
+    branches: 80
+    functions: 80
+    lines: 80
+  sonar_quality_gate: OK
+
+security_gates:
+  trufflehog_verified_findings: 0
+  dependency_check_fail_on_cvss: 7.0
+  trivy_critical_vulnerabilities: 0
+  trivy_fixable_high_vulnerabilities: 0
+  trivy_high_or_critical_secrets: 0
+  trivy_high_or_critical_misconfigurations: 0
+  unsigned_harbor_digests: 0
+  unverified_sbom_attestations: 0
+
+image_policy:
+  registry_project: vaultbank
+  immutable_tag_format: "<normalized-branch>-<short-commit>-<jenkins-build-number>"
+  latest_allowed: false
+  docker_compose_build_allowed_in_jenkins: false
+  secret_build_args_allowed: false
+
+exception_policy:
+  required_fields:
+    - finding_id
+    - tool
+    - affected_component
+    - business_justification
+    - compensating_control
+    - owner
+    - approved_by
+    - creation_date
+    - expiry_date
+    - tracking_issue
+  expired_exceptions_fail_pipeline: true
+
+exceptions: []

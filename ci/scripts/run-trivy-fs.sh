@@ -5,40 +5,48 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=ci/scripts/devsecops-common.sh
 source "${SCRIPT_DIR}/devsecops-common.sh"
 
+use_phase_report_dir "phase-06-trivy-fs"
+
 TRIVY_IMAGE="${TRIVY_IMAGE:-aquasec/trivy:latest}"
-TRIVY_FS_SEVERITY="${TRIVY_FS_SEVERITY:-HIGH,CRITICAL}"
 TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-${ROOT_DIR}/.trivy-cache}"
+TRIVY_IGNORE_FILE="${ROOT_DIR}/.trivyignore.yaml"
 
-mkdir -p "${TRIVY_CACHE_DIR}"
+mkdir -p "${TRIVY_CACHE_DIR}" "${REPORT_DIR}"
+python3 "${SCRIPT_DIR}/validate-security-exceptions.py"
 
-trivy_args=(
-  "fs"
-  "--scanners" "vuln,secret,misconfig"
-  "--severity" "${TRIVY_FS_SEVERITY}"
-  "--exit-code" "1"
-  "--ignore-unfixed"
-  "--format" "sarif"
-  "--output" "${REPORT_DIR}/trivy-fs.sarif"
+run_trivy_cli() {
+  local name="$1"
+  shift
+  require_command trivy
+  run_logged "${name}" trivy "$@"
+}
+
+run_trivy_cli "trivy-fs-critical-vuln" fs \
+  --scanners vuln \
+  --severity CRITICAL \
+  --exit-code 1 \
+  --ignorefile "${TRIVY_IGNORE_FILE}" \
+  --format json \
+  --output "${REPORT_DIR}/critical-vulnerabilities.json" \
   "${ROOT_DIR}"
-)
 
-if command -v trivy >/dev/null 2>&1; then
-  run_logged "trivy-filesystem-config-scan" trivy "${trivy_args[@]}"
-else
-  require_command docker
-  docker pull "${TRIVY_IMAGE}" > "${REPORT_DIR}/trivy-pull.log" 2> "${REPORT_DIR}/trivy-pull.err.log"
-  run_logged "trivy-filesystem-config-scan" docker run --rm \
-    -v "${ROOT_DIR}:/work:ro" \
-    -v "${TRIVY_CACHE_DIR}:/root/.cache" \
-    "${TRIVY_IMAGE}" \
-    fs \
-    --scanners vuln,secret,misconfig \
-    --severity "${TRIVY_FS_SEVERITY}" \
-    --exit-code 1 \
-    --ignore-unfixed \
-    --format sarif \
-    --output "/work/reports/devsecops/${RUN_ID}/trivy-fs.sarif" \
-    /work
-fi
+run_trivy_cli "trivy-fs-fixable-high-vuln" fs \
+  --scanners vuln \
+  --severity HIGH \
+  --ignore-unfixed \
+  --exit-code 1 \
+  --ignorefile "${TRIVY_IGNORE_FILE}" \
+  --format json \
+  --output "${REPORT_DIR}/fixable-high-vulnerabilities.json" \
+  "${ROOT_DIR}"
+
+run_trivy_cli "trivy-fs-secret-misconfig" fs \
+  --scanners misconfig,secret \
+  --severity HIGH,CRITICAL \
+  --exit-code 1 \
+  --ignorefile "${TRIVY_IGNORE_FILE}" \
+  --format sarif \
+  --output "${REPORT_DIR}/secret-misconfig.sarif" \
+  "${ROOT_DIR}"
 
 log "PASS: Trivy filesystem/config scan"

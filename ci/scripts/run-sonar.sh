@@ -5,22 +5,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=ci/scripts/devsecops-common.sh
 source "${SCRIPT_DIR}/devsecops-common.sh"
 
-SONAR_PROJECT_KEY="${SONAR_PROJECT_KEY:-vaultbank}"
-SONAR_ORGANIZATION="${SONAR_ORGANIZATION:-}"
-SONAR_HOST_URL="${SONAR_HOST_URL:-https://sonarcloud.io}"
-SONAR_TOKEN="${SONAR_TOKEN:-}"
-SONAR_IMAGE="${SONAR_IMAGE:-sonarsource/sonar-scanner-cli:latest}"
+use_phase_report_dir "phase-04-sonarqube"
 
-[ -n "${SONAR_TOKEN}" ] || die "SONAR_TOKEN is required"
+SONAR_TOKEN="${SONAR_TOKEN:-}"
+SONAR_HOST_URL="${SONAR_HOST_URL:-https://sonarcloud.io}"
+SONAR_ORGANIZATION="${SONAR_ORGANIZATION:-}"
+SONAR_SCANNER_IMAGE="${SONAR_SCANNER_IMAGE:-sonarsource/sonar-scanner-cli:latest}"
+
+[ -n "${SONAR_TOKEN}" ] || die "SONAR_TOKEN is required from Jenkins credential sonarqube-token"
+[ -f "${ROOT_DIR}/sonar-project.properties" ] || die "sonar-project.properties is required"
 
 scanner_args=(
-  "-Dsonar.projectKey=${SONAR_PROJECT_KEY}"
   "-Dsonar.host.url=${SONAR_HOST_URL}"
-  "-Dsonar.sources=backend-service/apps,backend-service/libs,frontend/src"
-  "-Dsonar.tests=backend-service/apps,backend-service/libs"
-  "-Dsonar.test.inclusions=**/*.spec.ts"
-  "-Dsonar.javascript.lcov.reportPaths=backend-service/coverage/lcov.info"
-  "-Dsonar.qualitygate.wait=true"
+  "-Dsonar.projectVersion=$(ci_image_tag)"
 )
 
 if [ -n "${SONAR_ORGANIZATION}" ]; then
@@ -28,17 +25,19 @@ if [ -n "${SONAR_ORGANIZATION}" ]; then
 fi
 
 cd "${ROOT_DIR}"
-
 if command -v sonar-scanner >/dev/null 2>&1; then
-  run_logged "sonar-sast-quality-gate" sonar-scanner "${scanner_args[@]}" "-Dsonar.token=${SONAR_TOKEN}"
+  SONAR_TOKEN="${SONAR_TOKEN}" run_logged "sonar-analysis" sonar-scanner \
+    "-Dsonar.projectBaseDir=${ROOT_DIR}" \
+    "${scanner_args[@]}"
 else
   require_command docker
-  docker pull "${SONAR_IMAGE}" > "${REPORT_DIR}/sonar-pull.log" 2> "${REPORT_DIR}/sonar-pull.err.log"
-  run_logged "sonar-sast-quality-gate" docker run --rm \
+  docker pull "${SONAR_SCANNER_IMAGE}" > "${REPORT_DIR}/sonar-pull.log" 2> "${REPORT_DIR}/sonar-pull.err.log"
+  run_logged "sonar-analysis" docker run --rm \
     -e SONAR_TOKEN="${SONAR_TOKEN}" \
     -v "${ROOT_DIR}:/usr/src:ro" \
-    "${SONAR_IMAGE}" \
-    "${scanner_args[@]}" "-Dsonar.token=${SONAR_TOKEN}"
+    "${SONAR_SCANNER_IMAGE}" \
+    "-Dsonar.projectBaseDir=/usr/src" \
+    "${scanner_args[@]}"
 fi
 
-log "PASS: SonarCloud/SonarQube SAST quality gate"
+log "PASS: SonarQube analysis submitted"

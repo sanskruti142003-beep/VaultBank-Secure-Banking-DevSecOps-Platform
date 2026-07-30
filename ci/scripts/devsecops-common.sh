@@ -2,17 +2,22 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-SERVICE_MAP="${ROOT_DIR}/config/service-map.txt"
-REPORT_ROOT="${REPORT_ROOT:-${ROOT_DIR}/reports/devsecops}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_MAP="${SERVICE_MAP:-${ROOT_DIR}/config/service-map.txt}"
+REPORT_ROOT="${REPORT_ROOT:-${ROOT_DIR}/reports}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
-REPORT_DIR="${REPORT_DIR:-${REPORT_ROOT}/${RUN_ID}}"
+REPORT_DIR="${REPORT_DIR:-${REPORT_ROOT}/devsecops/${RUN_ID}}"
 
-AWS_REGION="${AWS_REGION:-us-east-1}"
-AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-}"
-ECR_REPOSITORY_PREFIX="${ECR_REPOSITORY_PREFIX:-vaultbank}"
-IMAGE_TAG="${IMAGE_TAG:-$(git -C "${ROOT_DIR}" rev-parse --short=12 HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)}"
+IMAGE_TAG="${IMAGE_TAG:-}"
+HARBOR_REGISTRY="${HARBOR_REGISTRY:-}"
+HARBOR_PROJECT="${HARBOR_PROJECT:-vaultbank}"
+LOCAL_IMAGE_PREFIX="${LOCAL_IMAGE_PREFIX:-vaultbank}"
+COSIGN_KEY_REF="${COSIGN_KEY_REF:-awskms:///alias/vaultbank-cosign}"
 
 mkdir -p "${REPORT_DIR}"
+
+# shellcheck source=ci/scripts/parse-service-map.sh
+source "${SCRIPT_DIR}/parse-service-map.sh"
 
 log() {
   printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*"
@@ -27,43 +32,63 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
-ecr_registry() {
-  if [ -z "${AWS_ACCOUNT_ID}" ]; then
-    die "AWS_ACCOUNT_ID is required for ECR image references"
-  fi
-  printf '%s.dkr.ecr.%s.amazonaws.com\n' "${AWS_ACCOUNT_ID}" "${AWS_REGION}"
+use_phase_report_dir() {
+  local phase="$1"
+  REPORT_DIR="${REPORT_ROOT}/${phase}"
+  mkdir -p "${REPORT_DIR}"
 }
 
-image_repo() {
+short_commit() {
+  git -C "${ROOT_DIR}" rev-parse --short=12 HEAD
+}
+
+full_commit() {
+  git -C "${ROOT_DIR}" rev-parse HEAD
+}
+
+normalized_branch() {
+  local branch="${BRANCH_NAME:-${CHANGE_BRANCH:-}}"
+  if [ -z "${branch}" ]; then
+    branch="$(git -C "${ROOT_DIR}" branch --show-current 2>/dev/null || true)"
+  fi
+  if [ -z "${branch}" ]; then
+    branch="detached"
+  fi
+  printf '%s' "${branch}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
+ci_image_tag() {
+  if [ -n "${IMAGE_TAG}" ]; then
+    printf '%s\n' "${IMAGE_TAG}"
+    return
+  fi
+  local build_number="${BUILD_NUMBER:-local}"
+  printf '%s-%s-%s\n' "$(normalized_branch)" "$(short_commit)" "${build_number}"
+}
+
+local_image_repo() {
   local service="$1"
-  printf '%s/%s/%s\n' "$(ecr_registry)" "${ECR_REPOSITORY_PREFIX}" "${service}"
+  printf '%s/%s\n' "${LOCAL_IMAGE_PREFIX}" "${service}"
 }
 
-image_ref() {
+local_image_ref() {
   local service="$1"
-  printf '%s:%s\n' "$(image_repo "${service}")" "${IMAGE_TAG}"
+  printf '%s:%s\n' "$(local_image_repo "${service}")" "$(ci_image_tag)"
 }
 
-backend_services() {
-  awk -F'|' '$1 !~ /^($|#)/ && $2 == "backend" {print $1}' "${SERVICE_MAP}"
+harbor_image_repo() {
+  local service="$1"
+  [ -n "${HARBOR_REGISTRY}" ] || die "HARBOR_REGISTRY is required"
+  printf '%s/%s/%s\n' "${HARBOR_REGISTRY}" "${HARBOR_PROJECT}" "${service}"
 }
 
-frontend_services() {
-  awk -F'|' '$1 !~ /^($|#)/ && $2 == "frontend" {print $1}' "${SERVICE_MAP}"
+harbor_image_ref() {
+  local service="$1"
+  printf '%s:%s\n' "$(harbor_image_repo "${service}")" "$(ci_image_tag)"
 }
 
-write_image_list() {
-  local output="${1:-${REPORT_DIR}/images.txt}"
-  : > "${output}"
-  backend_services | while read -r service; do
-    printf '%s\n' "$(image_ref "${service}")" >> "${output}"
-  done
-  if [ "${BUILD_FRONTEND_IMAGE:-1}" = "1" ]; then
-    printf '%s\n' "$(image_ref "frontend")" >> "${output}"
-  fi
-  if [ "${BUILD_GATEWAY_IMAGE:-1}" = "1" ]; then
-    printf '%s\n' "$(image_ref "nginx-gateway")" >> "${output}"
-  fi
+safe_name() {
+  printf '%s' "$1" | tr '/:@' '____'
 }
 
 run_logged() {

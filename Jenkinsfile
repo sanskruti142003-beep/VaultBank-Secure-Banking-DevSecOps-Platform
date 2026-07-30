@@ -2,195 +2,236 @@ pipeline {
   agent any
 
   options {
+    skipDefaultCheckout(true)
     timestamps()
-    buildDiscarder(logRotator(numToKeepStr: '20'))
+    buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '20'))
     disableConcurrentBuilds()
+    timeout(time: 90, unit: 'MINUTES')
+  }
+
+  parameters {
+    string(name: 'HARBOR_REGISTRY', defaultValue: '', description: 'Harbor registry host, for example harbor.example.com')
+    string(name: 'SONAR_HOST_URL', defaultValue: 'https://sonarcloud.io', description: 'SonarCloud or SonarQube URL')
+    string(name: 'SONAR_ORGANIZATION', defaultValue: '', description: 'Required for SonarCloud, blank for many self-hosted SonarQube installs')
   }
 
   environment {
-    AWS_REGION = 'us-east-1'
-    AWS_ACCOUNT_ID = credentials('aws-account-id')
-    ECR_REPOSITORY_PREFIX = 'vaultbank'
-    IMAGE_TAG = "${BUILD_NUMBER}"
-    REPORT_ROOT = "${env.WORKSPACE}/reports/devsecops"
-    SONAR_PROJECT_KEY = 'vaultbank'
+    REPORT_ROOT = "${env.WORKSPACE}/reports"
+    HARBOR_PROJECT = 'vaultbank'
+    COSIGN_KEY_REF = 'awskms:///alias/vaultbank-cosign'
     DEPENDENCY_CHECK_FAIL_ON_CVSS = '7'
-    TRIVY_FS_SEVERITY = 'HIGH,CRITICAL'
-    TRIVY_IMAGE_SEVERITY = 'HIGH,CRITICAL'
-    BUILD_FRONTEND_IMAGE = '1'
-    BUILD_GATEWAY_IMAGE = '1'
+    DEPENDENCY_CHECK_DATA_DIR = '/var/lib/jenkins/dependency-check-data'
+    HARBOR_REGISTRY = "${params.HARBOR_REGISTRY}"
+    SONAR_HOST_URL = "${params.SONAR_HOST_URL}"
+    SONAR_ORGANIZATION = "${params.SONAR_ORGANIZATION}"
   }
 
   stages {
-    stage('Checkout') {
+    stage('01 Checkout and metadata') {
       steps {
-        checkout scm
+        cleanWs(deleteDirs: true)
+        checkout([
+          $class: 'GitSCM',
+          branches: scm.branches,
+          userRemoteConfigs: scm.userRemoteConfigs,
+          extensions: [
+            [$class: 'CloneOption', shallow: false, noTags: false, timeout: 20],
+            [$class: 'CleanBeforeCheckout']
+          ]
+        ])
+        sh '''
+          set -Eeuo pipefail
+          git fetch --tags --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          mkdir -p reports/phase-01-github
+          git rev-parse HEAD | tee reports/phase-01-github/git-commit.txt
+          git log --oneline --decorate -10 > reports/phase-01-github/git-log.txt
+          git status --porcelain > reports/phase-01-github/git-status.txt
+          branch="${BRANCH_NAME:-$(git branch --show-current)}"
+          short_commit="$(git rev-parse --short=12 HEAD)"
+          normalized_branch="$(printf '%s' "$branch" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+          printf 'IMAGE_TAG=%s-%s-%s\n' "$normalized_branch" "$short_commit" "$BUILD_NUMBER" > reports/phase-01-github/image-tag.env
+        '''
         script {
-          env.IMAGE_TAG = sh(returnStdout: true, script: 'git rev-parse --short=12 HEAD').trim()
+          def props = readProperties file: 'reports/phase-01-github/image-tag.env'
+          env.IMAGE_TAG = props['IMAGE_TAG']
         }
-        sh 'git rev-parse HEAD > reports-git-commit.txt'
       }
     }
 
-    stage('Repository Readiness') {
+    stage('02 Repository contract validation') {
       steps {
-        sh 'bash ci/scripts/validate-repository.sh'
+        sh '''
+          set -Eeuo pipefail
+          bash ci/scripts/jenkins-preflight.sh
+          bash ci/scripts/validate-repository.sh
+          git diff --check
+        '''
       }
     }
 
-    stage('Install Dependencies') {
+    stage('03 Backend/frontend deterministic quality gates') {
       parallel {
-        stage('Backend npm ci') {
+        stage('Backend quality') {
           steps {
             dir('backend-service') {
-              sh 'npm ci --legacy-peer-deps'
+              sh '''
+                set -Eeuo pipefail
+                npm ci --legacy-peer-deps
+                npm run lint:check
+                npm run build:all
+                npm test
+                npm run test:cov:all
+                git diff --exit-code -- package.json package-lock.json
+              '''
             }
           }
         }
-        stage('Frontend npm ci') {
+        stage('Frontend quality') {
           steps {
             dir('frontend') {
-              sh 'npm ci'
+              sh '''
+                set -Eeuo pipefail
+                npm ci
+                npm run typecheck
+                npm run build
+                git diff --exit-code -- package.json package-lock.json
+              '''
             }
           }
         }
       }
     }
 
-    stage('Build and Unit Test') {
-      parallel {
-        stage('Backend lint, build, test') {
-          steps {
-            dir('backend-service') {
-              sh 'npx eslint "{apps,libs,test}/**/*.ts" --max-warnings=0'
-              sh 'npm run build:all'
-              sh 'npm test'
-              sh 'npx jest --coverage --runInBand --coverageThreshold=\'{"global":{"branches":80,"functions":80,"lines":80,"statements":80}}\''
-            }
-          }
-        }
-        stage('Frontend typecheck and build') {
-          steps {
-            dir('frontend') {
-              sh 'npm run typecheck'
-              sh 'npm run build'
-            }
-          }
-        }
-      }
-      post {
-        always {
-          archiveArtifacts artifacts: 'backend-service/coverage/**,frontend/dist/**', allowEmptyArchive: true
-        }
-      }
-    }
-
-    stage('Security Gates') {
-      stages {
-        stage('TruffleHog secrets') {
-          steps {
-            sh 'bash ci/scripts/run-trufflehog.sh'
-          }
-        }
-        stage('Sonar SAST quality gate') {
-          steps {
-            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-              sh 'bash ci/scripts/run-sonar.sh'
-            }
-          }
-        }
-        stage('OWASP Dependency-Check SCA') {
-          steps {
-            withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-              sh 'bash ci/scripts/run-dependency-check.sh'
-            }
-          }
-        }
-        stage('Trivy filesystem/config') {
-          steps {
-            sh 'bash ci/scripts/run-trivy-fs.sh'
-          }
-        }
-      }
-      post {
-        always {
-          archiveArtifacts artifacts: 'reports/devsecops/**', allowEmptyArchive: true
-        }
-      }
-    }
-
-    stage('Container Security') {
-      stages {
-        stage('Build images') {
-          steps {
-            sh 'bash ci/scripts/build-images.sh'
-          }
-        }
-        stage('Trivy image scan') {
-          steps {
-            sh 'bash ci/scripts/scan-images.sh'
-          }
-        }
-      }
-    }
-
-    stage('Publish Signed Images') {
+    stage('04 TruffleHog current-tree scan') {
       steps {
-        sh 'bash ci/scripts/publish-images-ecr.sh'
-        withCredentials([file(credentialsId: 'cosign-key', variable: 'COSIGN_KEY')]) {
-          sh 'bash ci/scripts/sbom-sign-verify.sh'
-        }
-      }
-      post {
-        always {
-          archiveArtifacts artifacts: 'reports/devsecops/**', allowEmptyArchive: true
-        }
+        sh 'bash ci/scripts/run-trufflehog.sh current'
       }
     }
 
-    stage('GitOps Staging') {
-      when {
-        branch 'main'
-      }
+    stage('05 TruffleHog full-history scan') {
       steps {
-        sh 'bash ci/scripts/update-gitops-images.sh staging'
-        sh 'kustomize build gitops/overlays/staging > reports/devsecops/staging-rendered.yaml'
-        archiveArtifacts artifacts: 'reports/devsecops/staging-rendered.yaml', allowEmptyArchive: false
-        echo 'Commit gitops/overlays/staging/kustomization.yaml to the GitOps repo or same repo branch watched by Argo CD.'
+        sh 'bash ci/scripts/run-trufflehog.sh history'
       }
     }
 
-    stage('Staging Smoke and DAST') {
-      when {
-        branch 'main'
-      }
+    stage('06 SonarQube analysis') {
       steps {
-        sh 'bash ci/scripts/smoke-gateway.sh'
-        sh 'bash ci/scripts/run-zap.sh'
-        withCredentials([string(credentialsId: 'defectdojo-token', variable: 'DEFECTDOJO_TOKEN')]) {
-          sh 'bash ci/scripts/import-defectdojo.sh'
+        withSonarQubeEnv('SonarQube') {
+          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+            sh 'bash ci/scripts/run-sonar.sh'
+          }
         }
       }
     }
 
-    stage('Production Approval') {
-      when {
-        branch 'main'
-      }
+    stage('07 SonarQube quality gate') {
       steps {
-        input message: 'Promote signed image digests to production namespace?', ok: 'Promote'
-        sh 'bash ci/scripts/update-gitops-images.sh prod'
-        sh 'kustomize build gitops/overlays/prod > reports/devsecops/prod-rendered.yaml'
+        timeout(time: 10, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    stage('08 OWASP Dependency-Check') {
+      steps {
+        withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+          sh 'bash ci/scripts/run-dependency-check.sh'
+        }
+      }
+    }
+
+    stage('09 Trivy filesystem scan') {
+      steps {
+        sh 'bash ci/scripts/run-trivy-fs.sh'
+      }
+    }
+
+    stage('10 Build six images') {
+      steps {
+        sh 'bash ci/scripts/build-images.sh'
+      }
+    }
+
+    stage('11 Trivy image scans') {
+      steps {
+        sh 'bash ci/scripts/scan-images.sh'
+      }
+    }
+
+    stage('12 Generate Syft SBOMs') {
+      steps {
+        sh 'bash ci/scripts/generate-sboms.sh'
+      }
+    }
+
+    stage('13 Harbor login and push') {
+      steps {
+        withCredentials([
+          usernamePassword(credentialsId: 'harbor-robot', usernameVariable: 'HARBOR_USERNAME', passwordVariable: 'HARBOR_PASSWORD'),
+          file(credentialsId: 'harbor-ca-cert', variable: 'HARBOR_CA_CERT')
+        ]) {
+          sh 'bash ci/scripts/publish-harbor.sh push'
+        }
+      }
+    }
+
+    stage('14 Resolve digests') {
+      steps {
+        sh '''
+          set -Eeuo pipefail
+          test -s reports/phase-10-harbor/digest-manifest.jsonl
+          wc -l reports/phase-10-harbor/digest-manifest.jsonl | awk '$1 != 6 { exit 1 }'
+        '''
+      }
+    }
+
+    stage('15 Post-push Trivy digest scans') {
+      steps {
+        sh 'bash ci/scripts/publish-harbor.sh scan'
+      }
+    }
+
+    stage('16 Cosign sign') {
+      steps {
+        sh 'bash ci/scripts/publish-harbor.sh sign'
+      }
+    }
+
+    stage('17 Cosign SBOM attest') {
+      steps {
+        sh 'bash ci/scripts/publish-harbor.sh attest'
+      }
+    }
+
+    stage('18 Cosign verify') {
+      steps {
+        sh 'bash ci/scripts/publish-harbor.sh verify'
+      }
+    }
+
+    stage('19 Publish release manifest') {
+      steps {
+        sh 'bash ci/scripts/publish-harbor.sh manifest'
       }
     }
   }
 
   post {
     always {
-      archiveArtifacts artifacts: 'reports/devsecops/**', allowEmptyArchive: true
+      sh '''
+        set +e
+        rm -f "${WORKSPACE}/cosign.key" "${WORKSPACE}/harbor-ca-cert.pem"
+        find reports -type f -name '*.jsonl' -exec chmod 600 {} \\; 2>/dev/null
+      '''
+      archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true, fingerprint: true
+      junit allowEmptyResults: true, testResults: 'reports/phase-05-dependency-check/dependency-check-junit.xml,backend-service/junit*.xml'
+      cleanWs(deleteDirs: true, notFailBuild: true)
     }
     failure {
-      echo 'Pipeline failed. Do not merge or promote until the failing gate is remediated and rerun.'
+      echo 'NO-GO: a first-ten-phases gate failed. Do not merge or publish a release.'
+    }
+    success {
+      echo 'GO: phases 1-10 completed and Harbor release manifest was generated.'
     }
   }
 }

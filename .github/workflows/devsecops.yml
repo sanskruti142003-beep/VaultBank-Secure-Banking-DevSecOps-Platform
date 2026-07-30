@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
   security-events: write
 
 jobs:
@@ -30,6 +31,9 @@ jobs:
 
       - name: Validate repository structure
         run: bash ci/scripts/validate-repository.sh
+
+      - name: Validate all tracked files
+        run: bash ci/scripts/validate-all-files.sh
 
       - name: Install backend dependencies
         working-directory: backend-service
@@ -70,7 +74,13 @@ jobs:
           fetch-depth: 0
 
       - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: false
+
+      - name: Validate all tracked files
+        run: bash ci/scripts/validate-all-files.sh
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
