@@ -387,7 +387,9 @@ export class TransactionsService {
         new Decimal(0),
       );
     }
-    return new Decimal(this.fees.calculate(transaction.type, transaction.amount));
+    return new Decimal(
+      this.fees.calculate(transaction.type, transaction.amount),
+    );
   }
 
   private requiredAccountReference(

@@ -9,11 +9,16 @@ import {
 } from 'class-validator';
 import { normalizePhone } from '../phone.util';
 
-function normalizePan(value: string | null | undefined): string | null | undefined {
+function normalizePan(
+  value: string | null | undefined,
+): string | null | undefined {
   if (value === undefined || value === null) {
     return value;
   }
-  const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+  const normalized = value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 10);
   return normalized || null;
 }
 

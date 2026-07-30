@@ -99,11 +99,7 @@ describe('PaymentsService', () => {
   it('creates an order, triggers a transfer, and marks it successful when the transfer completes immediately', async () => {
     const result = await service.initiate(dto, actor, 'Bearer access-token');
 
-    expect(transferOtp.verify).toHaveBeenCalledWith(
-      actor,
-      dto.email,
-      dto.otp,
-    );
+    expect(transferOtp.verify).toHaveBeenCalledWith(actor, dto.email, dto.otp);
     expect(repository.createOrder).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: actor.userId,

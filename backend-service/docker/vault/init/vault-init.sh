@@ -1,4 +1,4 @@
-#!/bin/sh
+﻿#!/bin/sh
 set -eu
 
 : "${VAULT_DEV_ROOT_TOKEN_ID:?VAULT_DEV_ROOT_TOKEN_ID is required}"
@@ -25,7 +25,7 @@ set -eu
 : "${SMTP_HOST:=smtp.gmail.com}"
 : "${SMTP_PORT:=465}"
 : "${SMTP_SECURE:=true}"
-: "${SMTP_USER:=patilsonalias002@gmail.com}"
+: "${SMTP_USER:=noreply@example.test}"
 : "${SMTP_FROM:=$SMTP_USER}"
 : "${SMTP_PASS:?Set SMTP_PASS to your Google app password}"
 : "${TWILIO_ACCOUNT_SID:=}"

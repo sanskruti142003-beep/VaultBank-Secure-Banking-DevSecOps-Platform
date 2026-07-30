@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddAdminLoginOtpPurpose1761000003000
-  implements MigrationInterface
-{
+export class AddAdminLoginOtpPurpose1761000003000 implements MigrationInterface {
   name = 'AddAdminLoginOtpPurpose1761000003000';
 
   async up(queryRunner: QueryRunner): Promise<void> {

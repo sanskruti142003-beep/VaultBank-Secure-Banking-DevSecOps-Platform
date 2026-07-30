@@ -46,7 +46,8 @@ export class AuthHttpService extends BaseHttpService implements TokenValidator {
   private readonly authBaseUrl: string;
 
   constructor(http: HttpService) {
-    const baseUrl = process.env.AUTH_SERVICE_URL ?? 'http://auth-service:3001/v1';
+    const baseUrl =
+      process.env.AUTH_SERVICE_URL ?? 'http://auth-service:3001/v1';
     super(http, baseUrl);
     this.authBaseUrl = baseUrl.replace(/\/$/, '');
   }

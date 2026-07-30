@@ -63,9 +63,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       const hasDetails = Object.keys(details).length > 0;
       return {
         code: error?.toUpperCase().replaceAll(' ', '_') ?? 'HTTP_ERROR',
-        message: Array.isArray(message)
-          ? 'Request validation failed'
-          : message,
+        message: Array.isArray(message) ? 'Request validation failed' : message,
         ...(Array.isArray(message)
           ? { details: message }
           : hasDetails

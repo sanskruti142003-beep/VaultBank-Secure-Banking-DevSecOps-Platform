@@ -82,8 +82,8 @@ export class MetricsService {
   }
 
   private formatLabels(labels: HttpMetricLabels): string {
-    const pairs = Object.entries(labels).map(
-      ([key, value]) => `${key}="${this.escapeLabel(value)}"`,
+    const pairs = (Object.keys(labels) as Array<keyof HttpMetricLabels>).map(
+      (key) => `${key}="${this.escapeLabel(labels[key])}"`,
     );
     return `{${pairs.join(',')}}`;
   }

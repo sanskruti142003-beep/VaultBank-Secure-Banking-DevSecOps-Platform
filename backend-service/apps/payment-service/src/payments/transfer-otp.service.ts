@@ -266,7 +266,10 @@ export class TransferOtpService {
   private registeredEmail(actor: AuthenticatedUser, email: string): string {
     const normalizedEmail = email.trim().toLowerCase();
     const actorEmail = actor.email?.trim().toLowerCase();
-    if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    if (
+      !normalizedEmail ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+    ) {
       throw new BadRequestException(
         'A valid registered email address is required.',
       );
@@ -306,10 +309,7 @@ export class TransferOtpService {
     return normalizedPhone;
   }
 
-  private async sendSms(
-    to: string,
-    body: string,
-  ): Promise<'sent' | 'blocked'> {
+  private async sendSms(to: string, body: string): Promise<'sent' | 'blocked'> {
     const config = this.twilioConfig();
     const params = new URLSearchParams({
       To: to,
@@ -457,17 +457,14 @@ export class TransferOtpService {
 
     return {
       accountSid,
-      username: authToken ? accountSid : apiKey ?? '',
+      username: authToken ? accountSid : (apiKey ?? ''),
       password: authToken ?? apiSecret ?? '',
       from,
       messagingServiceSid,
     };
   }
 
-  private twilioRequestConfig(config: {
-    username: string;
-    password: string;
-  }) {
+  private twilioRequestConfig(config: { username: string; password: string }) {
     return {
       auth: {
         username: config.username,

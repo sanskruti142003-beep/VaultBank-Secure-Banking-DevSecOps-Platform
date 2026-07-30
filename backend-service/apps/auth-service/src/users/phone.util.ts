@@ -1,4 +1,6 @@
-export function normalizePhone(value: string | null | undefined): string | null {
+export function normalizePhone(
+  value: string | null | undefined,
+): string | null {
   if (typeof value !== 'string') {
     return null;
   }

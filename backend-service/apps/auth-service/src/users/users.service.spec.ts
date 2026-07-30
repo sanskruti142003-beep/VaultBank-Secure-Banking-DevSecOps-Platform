@@ -40,7 +40,9 @@ describe('UsersService', () => {
       findByPhone: jest.fn(),
       findByPanNumber: jest.fn(),
       findAll: jest.fn(),
-      saveUser: jest.fn().mockImplementation((value: User) => Promise.resolve(value)),
+      saveUser: jest
+        .fn()
+        .mockImplementation((value: User) => Promise.resolve(value)),
     } as unknown as jest.Mocked<UsersRepository>;
 
     service = new UsersService(repository);

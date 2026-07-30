@@ -19,10 +19,7 @@ import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateKycDto } from './dto/update-kyc.dto';
 import { UpdateLimitsDto } from './dto/update-limits.dto';
 import { AddBeneficiaryDto } from './dto/add-beneficiary.dto';
-import {
-  BalanceOperation,
-  UpdateBalanceDto,
-} from './dto/update-balance.dto';
+import { BalanceOperation, UpdateBalanceDto } from './dto/update-balance.dto';
 import { ReverseTransactionBalanceDto } from './dto/reverse-transaction-balance.dto';
 import { AuthHttpService } from '../http/auth-http.service';
 
@@ -38,7 +35,13 @@ export interface AccountValidation {
 
 export type AccountLookup = Pick<
   Account,
-  'id' | 'userId' | 'accountNumber' | 'type' | 'currency' | 'status' | 'kycStatus'
+  | 'id'
+  | 'userId'
+  | 'accountNumber'
+  | 'type'
+  | 'currency'
+  | 'status'
+  | 'kycStatus'
 > & {
   ownerName?: string;
 };
@@ -343,7 +346,10 @@ export class AccountsService {
         throw new BadRequestException('Amount must be greater than zero');
       }
       const current = new Decimal(account.balance);
-      if (dto.operation === BalanceOperation.DEBIT && current.lessThan(amount)) {
+      if (
+        dto.operation === BalanceOperation.DEBIT &&
+        current.lessThan(amount)
+      ) {
         throw new BadRequestException('Insufficient account balance');
       }
       account.balance =

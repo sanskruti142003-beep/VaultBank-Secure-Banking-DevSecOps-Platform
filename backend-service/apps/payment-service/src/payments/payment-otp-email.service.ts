@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -11,7 +11,7 @@ interface PaymentOtpEmailInput {
   expiresAt: Date;
 }
 
-const DEFAULT_GMAIL_USER = 'patilsonalias002@gmail.com';
+const DEFAULT_GMAIL_USER = 'noreply@example.test';
 
 @Injectable()
 export class PaymentOtpEmailService {

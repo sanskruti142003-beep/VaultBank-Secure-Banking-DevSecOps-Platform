@@ -140,7 +140,10 @@ export class UsersService {
     if (!value) {
       return null;
     }
-    const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+    const normalized = value
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 10);
     return normalized || null;
   }
 

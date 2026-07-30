@@ -6,6 +6,24 @@
 .agents/
 .codex/
 
+# Local environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+**/.env.*.local
+!.env.example
+!.env.*.example
+!**/.env.example
+!**/.env.*.example
+
 # Generated local TLS certificates
 backend-service/nginx/certs/*
 !backend-service/nginx/certs/.gitkeep

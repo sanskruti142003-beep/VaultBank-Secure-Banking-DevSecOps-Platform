@@ -4,12 +4,7 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import {
-  AxiosError,
-  AxiosRequestConfig,
-  AxiosResponse,
-  isAxiosError,
-} from 'axios';
+import { AxiosRequestConfig, AxiosResponse, isAxiosError } from 'axios';
 import axiosRetry from 'axios-retry';
 import { CorrelationContext } from '../correlation/correlation.context';
 
@@ -122,22 +117,21 @@ export abstract class BaseHttpService {
   }
 
   private describe(error: unknown): string {
-    if (isAxiosError(error)) {
-      const axiosError = error as AxiosError;
-      return `HTTP dependency failed: ${axiosError.message}`;
+    if (isAxiosError<unknown>(error)) {
+      return `HTTP dependency failed: ${error.message}`;
     }
     return error instanceof Error ? error.message : String(error);
   }
 
   private dependencyStatus(error: unknown): number | undefined {
-    if (!isAxiosError(error)) {
+    if (!isAxiosError<unknown>(error)) {
       return undefined;
     }
     return error.response?.status;
   }
 
   private dependencyMessage(error: unknown): string {
-    if (!isAxiosError(error)) {
+    if (!isAxiosError<unknown>(error)) {
       return 'Dependency request failed';
     }
     const body = error.response?.data;

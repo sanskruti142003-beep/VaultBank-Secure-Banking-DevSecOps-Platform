@@ -199,7 +199,9 @@ describe('AuthService', () => {
   });
 
   it('checks whether a phone number is available', async () => {
-    repository.findByPhone.mockResolvedValueOnce(null).mockResolvedValueOnce(user);
+    repository.findByPhone
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(user);
 
     await expect(service.checkPhone('+91 98765 43210')).resolves.toEqual({
       available: true,
@@ -299,7 +301,10 @@ describe('AuthService', () => {
     expect(result.refresh_token).toBe('refresh-token');
     expect(repository.createRefreshToken).toHaveBeenCalled();
     expect(cache.setSession).toHaveBeenCalled();
-    expect(cache.deleteRateLimit).toHaveBeenCalledWith('127.0.0.1', 'auth:login');
+    expect(cache.deleteRateLimit).toHaveBeenCalledWith(
+      '127.0.0.1',
+      'auth:login',
+    );
     expect(events.publish).toHaveBeenCalledWith(
       'user.login',
       expect.objectContaining({ userId: user.id }),
@@ -357,7 +362,10 @@ describe('AuthService', () => {
     );
 
     expect('access_token' in result).toBe(true);
-    expect(cache.deleteRateLimit).toHaveBeenCalledWith('127.0.0.1', 'auth:login');
+    expect(cache.deleteRateLimit).toHaveBeenCalledWith(
+      '127.0.0.1',
+      'auth:login',
+    );
   });
 
   it('keeps blocking incorrect passwords after the IP rate limit is reached', async () => {

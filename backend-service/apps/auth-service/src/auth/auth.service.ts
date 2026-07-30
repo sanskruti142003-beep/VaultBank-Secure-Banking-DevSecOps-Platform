@@ -161,7 +161,9 @@ export class AuthService {
       await this.cache.deleteRateLimit(ip, 'auth:login');
       const roles = this.users.roles(user);
       if (roles.includes(RoleName.ADMIN) && dto.role !== RoleName.ADMIN) {
-        throw new ForbiddenException('Admin accounts must use the admin portal.');
+        throw new ForbiddenException(
+          'Admin accounts must use the admin portal.',
+        );
       }
       if (dto.role) {
         this.assertRequestedRole(user, dto.role);
@@ -203,11 +205,15 @@ export class AuthService {
         this.adminLoginChallengeKey(challengeId),
       );
       if (!state) {
-        throw new BadRequestException('Admin verification code is invalid or expired');
+        throw new BadRequestException(
+          'Admin verification code is invalid or expired',
+        );
       }
       const user = await this.userByEmail(email);
       if (user.id !== state.userId) {
-        throw new BadRequestException('Admin verification code is invalid or expired');
+        throw new BadRequestException(
+          'Admin verification code is invalid or expired',
+        );
       }
       await this.clearExpiredLoginLock(user);
       this.assertLoginNotLocked(user);
@@ -216,7 +222,9 @@ export class AuthService {
         throw new ForbiddenException('User account is inactive');
       }
       await this.verifyOtp(user, OtpPurpose.ADMIN_LOGIN, otp);
-      await this.cache.invalidateCache(this.adminLoginChallengeKey(challengeId));
+      await this.cache.invalidateCache(
+        this.adminLoginChallengeKey(challengeId),
+      );
       const tokens = await this.createTokenPair(user);
       this.events.publish('user.login', {
         userId: user.id,

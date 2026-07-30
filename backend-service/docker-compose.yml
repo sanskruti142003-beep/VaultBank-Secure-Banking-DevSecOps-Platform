@@ -1,4 +1,4 @@
-x-vault-seed-environment: &vault-seed-environment
+﻿x-vault-seed-environment: &vault-seed-environment
   VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN:?Set VAULT_DEV_ROOT_TOKEN in .env}
   POSTGRES_HOST: postgres
   REDIS_HOST: redis
@@ -30,8 +30,8 @@ x-vault-seed-environment: &vault-seed-environment
   SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
   SMTP_PORT: ${SMTP_PORT:-465}
   SMTP_SECURE: ${SMTP_SECURE:-true}
-  SMTP_USER: ${SMTP_USER:-patilsonalias002@gmail.com}
-  SMTP_FROM: ${SMTP_FROM:-patilsonalias002@gmail.com}
+  SMTP_USER: ${SMTP_USER:-noreply@example.test}
+  SMTP_FROM: ${SMTP_FROM:-noreply@example.test}
   SMTP_PASS: ${SMTP_PASS:?Set SMTP_PASS to your Google app password in .env}
   TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
   TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
@@ -361,8 +361,8 @@ services:
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_SECURE: ${SMTP_SECURE:-true}
-      SMTP_USER: ${SMTP_USER:-patilsonalias002@gmail.com}
-      SMTP_FROM: ${SMTP_FROM:-patilsonalias002@gmail.com}
+      SMTP_USER: ${SMTP_USER:-noreply@example.test}
+      SMTP_FROM: ${SMTP_FROM:-noreply@example.test}
       SMTP_PASS: ${SMTP_PASS:?Set SMTP_PASS to your Google app password in .env}
       PAYMENT_OTP_CHANNEL: ${PAYMENT_OTP_CHANNEL:-sms}
       PAYMENT_OTP_EMAIL_FALLBACK: ${PAYMENT_OTP_EMAIL_FALLBACK:-true}
