@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vaultbank-prod
+
+resources:
+  - namespace.yaml
+  - ../../base
+  - resource-quota.yaml
+
+images:
+  - name: auth-service
+    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/auth-service
+    newTag: replace-me
+  - name: account-service
+    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/account-service
+    newTag: replace-me
+  - name: transaction-service
+    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/transaction-service
+    newTag: replace-me
+  - name: payment-service
+    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/payment-service
+    newTag: replace-me
+  - name: notification-service
+    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/notification-service
+    newTag: replace-me
+  - name: nginx-gateway
+    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/nginx-gateway
+    newTag: replace-me
+  - name: frontend
+    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/frontend
+    newTag: replace-me
+
+patches:
+  - path: nodeport-services.yaml
+  - path: runtime-config-patch.yaml

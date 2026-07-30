@@ -1,0 +1,12 @@
+# Banking-critical paths require review from service/security owners.
+/backend-service/apps/auth-service/ @security-team
+/backend-service/apps/account-service/ @backend-team
+/backend-service/apps/transaction-service/ @ledger-team @security-team
+/backend-service/apps/payment-service/ @payments-team @security-team
+/backend-service/libs/common/src/guards/ @security-team
+/backend-service/libs/vault/ @security-team
+/backend-service/docker/vault/ @security-team
+/backend-service/nginx/ @security-team
+/ci/ @devsecops-team
+/gitops/ @devsecops-team
+/infra/ @cloud-security-team

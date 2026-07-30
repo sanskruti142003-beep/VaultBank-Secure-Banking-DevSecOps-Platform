@@ -1,0 +1,27 @@
+groups:
+  - name: vaultbank-service-health
+    rules:
+      - alert: VaultBankServiceDown
+        expr: up{job="vaultbank-services"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "VaultBank service is down"
+          description: "{{ $labels.namespace }}/{{ $labels.service }} has been unreachable for more than 2 minutes."
+      - alert: VaultBankHighPaymentFailureRate
+        expr: increase(vaultbank_payment_failures_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "Payment failures exceeded threshold"
+          description: "More than five payment failures were observed in five minutes."
+      - alert: VaultBankNoMetrics
+        expr: absent(up{job="vaultbank-services"})
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "VaultBank metrics disappeared"
+          description: "Prometheus is not seeing any VaultBank service targets."

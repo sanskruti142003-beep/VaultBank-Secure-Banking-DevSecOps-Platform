@@ -1,0 +1,19 @@
+- job_name: vaultbank-services
+  metrics_path: /v1/metrics
+  kubernetes_sd_configs:
+    - role: endpoints
+      namespaces:
+        names:
+          - vaultbank-staging
+          - vaultbank-prod
+  relabel_configs:
+    - source_labels: [__meta_kubernetes_service_name]
+      regex: (auth-service|account-service|transaction-service|payment-service|notification-service)
+      action: keep
+    - source_labels: [__meta_kubernetes_endpoint_port_name]
+      regex: http
+      action: keep
+    - source_labels: [__meta_kubernetes_namespace]
+      target_label: namespace
+    - source_labels: [__meta_kubernetes_service_name]
+      target_label: service
