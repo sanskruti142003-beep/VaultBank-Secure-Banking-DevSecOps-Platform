@@ -106,6 +106,24 @@ write_environment_report() {
   git status --short > "${REPORT_DIR}/git-status.txt" 2>/dev/null || true
 }
 
+check_working_tree() {
+  local status
+
+  status="$(git status --porcelain --untracked-files=normal)"
+
+  if [ -n "${status}" ]; then
+    printf '%s\n' "${status}" \
+      > "${REPORT_DIR}/git-status-dirty.txt"
+
+    warn \
+      "working tree is not clean; review ${REPORT_DIR}/git-status-dirty.txt"
+
+    return 0
+  fi
+
+  pass "working tree is clean"
+}
+
 check_snapshot_and_backup() {
   local ok=1
 
@@ -598,6 +616,7 @@ for command_name in git bash node npm docker curl df; do
 done
 
 write_environment_report
+check_working_tree
 
 check_snapshot_and_backup
 check_filesystem_capacity

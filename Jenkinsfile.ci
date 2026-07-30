@@ -29,6 +29,12 @@ pipeline {
         sh '''
           set -Eeuo pipefail
 
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --unshallow --tags origin
+          else
+            git fetch --tags --force --prune origin
+          fi
+
           mkdir -p reports/phase-02-ci-baseline
 
           git rev-parse HEAD |
@@ -65,7 +71,27 @@ pipeline {
       }
     }
 
-    stage('03 Backend quality gates') {
+    stage('03 Pinned security tool verification') {
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          bash ci/scripts/verify-tool-versions.sh
+        '''
+      }
+    }
+
+    stage('04 TruffleHog verified-secret gate') {
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          bash ci/scripts/run-trufflehog.sh all
+        '''
+      }
+    }
+
+    stage('05 Backend quality gates') {
       steps {
         dir('backend-service') {
           sh '''
@@ -97,7 +123,7 @@ pipeline {
       }
     }
 
-    stage('04 Frontend quality gates') {
+    stage('06 Frontend quality gates') {
       steps {
         dir('frontend') {
           sh '''
@@ -125,7 +151,7 @@ pipeline {
       }
     }
 
-    stage('05 Final evidence check') {
+    stage('07 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
