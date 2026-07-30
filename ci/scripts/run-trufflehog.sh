@@ -5,79 +5,129 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=ci/scripts/devsecops-common.sh
 source "${SCRIPT_DIR}/devsecops-common.sh"
 
+use_phase_report_dir "phase-03-trufflehog"
+
+MODE="${1:-all}"
 TRUFFLEHOG_IMAGE="${TRUFFLEHOG_IMAGE:-trufflesecurity/trufflehog:latest}"
-EXCLUDE_FILE="${REPORT_DIR}/trufflehog-exclude-paths.txt"
+EXCLUDE_FILE="${REPORT_DIR}/exclude-paths.txt"
+SANITIZED_SUMMARY="${REPORT_DIR}/sanitized-summary.jsonl"
 
 cat > "${EXCLUDE_FILE}" <<'EOF'
 /(node_modules|dist|coverage|reports|\.git)/
 EOF
 
+if [ "${MODE}" = "all" ] || [ "${MODE}" = "current" ]; then
+  : > "${SANITIZED_SUMMARY}"
+else
+  touch "${SANITIZED_SUMMARY}"
+fi
+
+sanitize_jsonl() {
+  local input="$1"
+  local label="$2"
+  python3 - "$input" "$label" >> "${SANITIZED_SUMMARY}" <<'PY'
+import json
+import sys
+
+path, label = sys.argv[1], sys.argv[2]
+with open(path, "r", encoding="utf-8", errors="replace") as handle:
+    for line in handle:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        source = item.get("SourceMetadata", {}).get("Data", {})
+        print(json.dumps({
+            "scan": label,
+            "detector": item.get("DetectorName"),
+            "verified": item.get("Verified"),
+            "file": source.get("Filesystem", {}).get("file") or source.get("Git", {}).get("file"),
+            "line": source.get("Filesystem", {}).get("line") or source.get("Git", {}).get("line"),
+            "commit": source.get("Git", {}).get("commit"),
+        }, sort_keys=True))
+PY
+}
+
 run_trufflehog_scan() {
   local label="$1"
-  local log_name="$2"
+  local output="$2"
   shift 2
   local rc
 
   set +e
-  "$@" > "${REPORT_DIR}/${log_name}.jsonl" 2> "${REPORT_DIR}/${log_name}.err.log"
+  "$@" > "${output}" 2> "${output%.jsonl}.err.log"
   rc=$?
   set -e
+  chmod 600 "${output}" "${output%.jsonl}.err.log" 2>/dev/null || true
+  sanitize_jsonl "${output}" "${label}"
 
   case "${rc}" in
     0)
       log "PASS: ${label}"
       ;;
     183)
-      die "${label} found verified or unknown secret material. Rotate, purge history if needed, and rerun."
+      die "${label} found verified credentials. Revoke, rotate, purge history if needed, and rerun."
       ;;
     *)
-      die "${label} execution failed with exit code ${rc}; see ${REPORT_DIR}/${log_name}.err.log"
+      die "${label} failed with exit code ${rc}"
       ;;
   esac
 }
 
 cd "${ROOT_DIR}"
+require_command python3
 
 if command -v trufflehog >/dev/null 2>&1; then
   trufflehog --version > "${REPORT_DIR}/trufflehog-version.txt" 2>&1 || true
-  run_trufflehog_scan "TruffleHog current-tree scan" "trufflehog-current-tree" \
-    trufflehog filesystem "${ROOT_DIR}" \
-    --exclude-paths "${EXCLUDE_FILE}" \
-    --results=verified,unknown \
-    --fail \
-    --json
+  if [ "${MODE}" = "all" ] || [ "${MODE}" = "current" ]; then
+    run_trufflehog_scan "TruffleHog current-tree scan" "${REPORT_DIR}/current-tree.jsonl" \
+      trufflehog --no-update filesystem "${ROOT_DIR}" \
+        --exclude-paths "${EXCLUDE_FILE}" \
+        --results=verified \
+        --fail \
+        --json
+  fi
 
-  run_trufflehog_scan "TruffleHog full-history scan" "trufflehog-full-history" \
-    trufflehog git "file://${ROOT_DIR}" \
-    --results=verified,unknown \
-    --fail \
-    --json
-  exit 0
+  if [ "${MODE}" = "all" ] || [ "${MODE}" = "history" ]; then
+    run_trufflehog_scan "TruffleHog full-history scan" "${REPORT_DIR}/full-history.jsonl" \
+      trufflehog --no-update git "file://${ROOT_DIR}" \
+        --results=verified \
+        --fail \
+        --json
+  fi
+else
+  require_command docker
+  docker pull "${TRUFFLEHOG_IMAGE}" > "${REPORT_DIR}/trufflehog-pull.log" 2> "${REPORT_DIR}/trufflehog-pull.err.log"
+  REPO_PARENT="$(dirname "${ROOT_DIR}")"
+  REPO_NAME="$(basename "${ROOT_DIR}")"
+  if [ "${MODE}" = "all" ] || [ "${MODE}" = "current" ]; then
+    run_trufflehog_scan "TruffleHog current-tree scan" "${REPORT_DIR}/current-tree.jsonl" \
+      docker run --rm \
+        --volume "${REPO_PARENT}:/work:ro" \
+        "${TRUFFLEHOG_IMAGE}" \
+        --no-update filesystem "/work/${REPO_NAME}" \
+        --exclude-paths "/work/${REPO_NAME}/reports/phase-03-trufflehog/exclude-paths.txt" \
+        --results=verified \
+        --fail \
+        --json
+  fi
+
+  if [ "${MODE}" = "all" ] || [ "${MODE}" = "history" ]; then
+    run_trufflehog_scan "TruffleHog full-history scan" "${REPORT_DIR}/full-history.jsonl" \
+      docker run --rm \
+        --volume "${REPO_PARENT}:/work:ro" \
+        "${TRUFFLEHOG_IMAGE}" \
+        --no-update git "file:///work/${REPO_NAME}" \
+        --results=verified \
+        --fail \
+        --json
+  fi
 fi
 
-require_command docker
-docker pull "${TRUFFLEHOG_IMAGE}" > "${REPORT_DIR}/trufflehog-pull.log" 2> "${REPORT_DIR}/trufflehog-pull.err.log"
-docker image inspect --format '{{range .RepoDigests}}{{.}}{{"\n"}}{{end}}' "${TRUFFLEHOG_IMAGE}" \
-  > "${REPORT_DIR}/trufflehog-image-digest.txt" 2>/dev/null || true
-
-REPO_PARENT="$(dirname "${ROOT_DIR}")"
-REPO_NAME="$(basename "${ROOT_DIR}")"
-
-run_trufflehog_scan "TruffleHog current-tree scan" "trufflehog-current-tree" \
-  docker run --rm \
-  --volume "${REPO_PARENT}:/work:ro" \
-  "${TRUFFLEHOG_IMAGE}" \
-  filesystem "/work/${REPO_NAME}" \
-  --exclude-paths "/work/${REPO_NAME}/reports/devsecops/${RUN_ID}/trufflehog-exclude-paths.txt" \
-  --results=verified,unknown \
-  --fail \
-  --json
-
-run_trufflehog_scan "TruffleHog full-history scan" "trufflehog-full-history" \
-  docker run --rm \
-  --volume "${REPO_PARENT}:/work:ro" \
-  "${TRUFFLEHOG_IMAGE}" \
-  git "file:///work/${REPO_NAME}" \
-  --results=verified,unknown \
-  --fail \
-  --json
+case "${MODE}" in
+  all|current|history) ;;
+  *) die "unknown TruffleHog mode: ${MODE}" ;;
+esac

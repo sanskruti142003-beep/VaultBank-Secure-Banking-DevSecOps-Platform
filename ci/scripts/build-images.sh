@@ -5,49 +5,95 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=ci/scripts/devsecops-common.sh
 source "${SCRIPT_DIR}/devsecops-common.sh"
 
+use_phase_report_dir "phase-07-build"
+
 require_command docker
+require_command python3
+
+IMAGE_LIST="${REPORT_DIR}/images.txt"
+IMAGE_MANIFEST_JSONL="${REPORT_DIR}/image-manifest.jsonl"
+IMAGE_MANIFEST="${REPORT_DIR}/image-manifest.json"
+
+: > "${IMAGE_LIST}"
+: > "${IMAGE_MANIFEST_JSONL}"
 
 cd "${ROOT_DIR}"
-: > "${REPORT_DIR}/images.txt"
+commit="$(full_commit)"
+tag="$(ci_image_tag)"
 
-backend_services | while read -r service; do
-  image="$(image_ref "${service}")"
-  run_logged "docker-build-${service}" docker build \
-    --file "${ROOT_DIR}/backend-service/Dockerfile" \
-    --build-arg "SERVICE_NAME=${service}" \
-    --label "org.opencontainers.image.source=${GIT_URL:-local}" \
-    --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
-    --label "dev.vaultbank.service=${service}" \
-    --tag "${image}" \
-    "${ROOT_DIR}/backend-service"
-  printf '%s\n' "${image}" >> "${REPORT_DIR}/images.txt"
-done
+while IFS= read -r service; do
+  kind="$(service_kind "${service}")"
+  context="$(service_context "${service}")"
+  dockerfile="$(service_dockerfile "${service}")"
+  build_arg="$(service_build_arg "${service}")"
+  image="$(local_image_ref "${service}")"
 
-if [ "${BUILD_GATEWAY_IMAGE:-1}" = "1" ]; then
-  image="$(image_ref "nginx-gateway")"
-  gateway_dockerfile="${ROOT_DIR}/backend-service/nginx/Dockerfile"
-  if [ "${USE_MODSECURITY_GATEWAY:-0}" = "1" ]; then
-    gateway_dockerfile="${ROOT_DIR}/backend-service/nginx/Dockerfile.modsecurity"
+  docker_args=(
+    build
+    --pull
+    --file "${ROOT_DIR}/${dockerfile}"
+    --label "org.opencontainers.image.source=${GIT_URL:-https://github.com/sonappatil/vault_bank.git}"
+    --label "org.opencontainers.image.revision=${commit}"
+    --label "org.opencontainers.image.version=${tag}"
+    --label "org.opencontainers.image.title=vaultbank-${service}"
+    --label "dev.vaultbank.service=${service}"
+    --tag "${image}"
+  )
+
+  if [ "${kind}" = "backend" ]; then
+    [ -n "${build_arg}" ] || die "${service} missing SERVICE_NAME build arg"
+    docker_args+=(--build-arg "${build_arg}")
+  elif [ "${kind}" = "frontend" ]; then
+    docker_args+=(--build-arg "VITE_API_BASE_URL=${VITE_API_BASE_URL:-/api}")
+  else
+    die "unsupported service kind for ${service}: ${kind}"
   fi
-  run_logged "docker-build-nginx-gateway" docker build \
-    --file "${gateway_dockerfile}" \
-    --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
-    --label "dev.vaultbank.service=nginx-gateway" \
-    --tag "${image}" \
-    "${ROOT_DIR}/backend-service/nginx"
-  printf '%s\n' "${image}" >> "${REPORT_DIR}/images.txt"
-fi
 
-if [ "${BUILD_FRONTEND_IMAGE:-1}" = "1" ]; then
-  image="$(image_ref "frontend")"
-  run_logged "docker-build-frontend" docker build \
-    --file "${ROOT_DIR}/frontend/Dockerfile" \
-    --build-arg "VITE_API_BASE_URL=${VITE_API_BASE_URL:-/api}" \
-    --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
-    --label "dev.vaultbank.service=frontend" \
-    --tag "${image}" \
-    "${ROOT_DIR}/frontend"
-  printf '%s\n' "${image}" >> "${REPORT_DIR}/images.txt"
-fi
+  docker_args+=("${ROOT_DIR}/${context}")
+  run_logged "docker-build-${service}" docker "${docker_args[@]}"
 
-log "PASS: Docker multi-stage image build"
+  image_id="$(docker image inspect --format '{{.Id}}' "${image}")"
+  user="$(docker image inspect --format '{{.Config.User}}' "${image}")"
+  [ -n "${user}" ] || die "${service} final image must define a non-root USER"
+  [ "${user}" != "root" ] || die "${service} final image must not run as root"
+
+  if docker history --no-trunc "${image}" | grep -Ei '(_SECRET|PASSWORD|TOKEN|PRIVATE KEY|BEGIN .*PRIVATE)' >/dev/null; then
+    die "${service} image history may contain secret material"
+  fi
+
+  printf '%s\n' "${image}" >> "${IMAGE_LIST}"
+  python3 - "$IMAGE_MANIFEST_JSONL" "$service" "$kind" "$image" "$image_id" "$user" "$dockerfile" "$context" "$tag" "$commit" <<'PY'
+import json
+import sys
+
+path, service, kind, image, image_id, user, dockerfile, context, tag, commit = sys.argv[1:]
+with open(path, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps({
+        "service": service,
+        "kind": kind,
+        "local_image": image,
+        "image_id": image_id,
+        "runtime_user": user,
+        "dockerfile": dockerfile,
+        "context": context,
+        "tag": tag,
+        "source_commit": commit,
+    }, sort_keys=True) + "\n")
+PY
+done < <(service_names)
+
+python3 - "${IMAGE_MANIFEST_JSONL}" "${IMAGE_MANIFEST}" <<'PY'
+import json
+import sys
+
+src, dst = sys.argv[1:]
+with open(src, "r", encoding="utf-8") as handle:
+    rows = [json.loads(line) for line in handle if line.strip()]
+if len(rows) != 6:
+    raise SystemExit(f"expected 6 images from service map, found {len(rows)}")
+with open(dst, "w", encoding="utf-8") as handle:
+    json.dump({"images": rows}, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+PY
+
+log "PASS: six deterministic image builds"
