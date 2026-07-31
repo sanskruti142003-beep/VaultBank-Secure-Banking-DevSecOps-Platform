@@ -456,15 +456,14 @@ services:
     container_name: banking-nginx
     restart: unless-stopped
     ports:
-      - '127.0.0.1:${NGINX_HTTP_PORT:-8080}:80'
-      - '127.0.0.1:${NGINX_HTTPS_PORT:-443}:443'
+      - '127.0.0.1:${NGINX_HTTP_PORT:-8080}:8080'
+      - '127.0.0.1:${NGINX_HTTPS_PORT:-443}:8443'
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./nginx/snippets:/etc/nginx/snippets:ro
       - ./nginx/html:/etc/nginx/html:ro
       - ${SSL_CERT_PATH:-./nginx/certs/self-signed.crt}:/etc/nginx/certs/self-signed.crt:ro
       - ${SSL_KEY_PATH:-./nginx/certs/self-signed.key}:/etc/nginx/certs/self-signed.key:ro
-      - ./nginx/logs:/var/log/nginx
     depends_on:
       auth-service:
         condition: service_healthy
