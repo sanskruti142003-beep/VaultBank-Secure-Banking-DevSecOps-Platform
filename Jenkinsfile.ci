@@ -175,7 +175,47 @@ pipeline {
       }
     }
 
-    stage('08 Final evidence check') {
+    stage('08 OWASP Dependency-Check CVSS gate') {
+      options {
+        timeout(time: 45, unit: 'MINUTES')
+      }
+
+      steps {
+        withCredentials([
+          string(
+            credentialsId: 'nvd-api-key',
+            variable: 'NVD_API_KEY'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+
+            export DEPENDENCY_CHECK_DATA_DIR=/var/lib/jenkins/dependency-check-data
+            export DEPENDENCY_CHECK_RUNTIME_DIR=/var/lib/jenkins/dependency-check-runtime
+            export DEPENDENCY_CHECK_FAIL_ON_CVSS=7.0
+
+            bash ci/scripts/run-dependency-check.sh
+          '''
+        }
+      }
+
+      post {
+        always {
+          junit(
+            allowEmptyResults: true,
+            testResults: 'reports/phase-05-dependency-check/dependency-check-junit.xml'
+          )
+
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-05-dependency-check/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('09 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail

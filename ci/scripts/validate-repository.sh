@@ -155,11 +155,33 @@ fi
 
 private_key_pattern='BEGIN .*PRIVATE '
 private_key_pattern="${private_key_pattern}KEY"
-if git -C "$ROOT_DIR" grep -n "$private_key_pattern" -- . ':!backend-service/nginx/certs/*' >/tmp/vaultbank-private-key-scan.txt 2>/dev/null; then
-  cat /tmp/vaultbank-private-key-scan.txt >&2
-  fail 'private key material found outside ignored local cert folder'
+
+private_key_scan_file=''
+
+if private_key_scan_file="$(
+  mktemp "${TMPDIR:-/tmp}/vaultbank-private-key-scan.XXXXXX"
+)"; then
+  private_key_scan_error="${private_key_scan_file}.err"
+
+  if git -C "$ROOT_DIR" grep     -n     "$private_key_pattern"     --     .     ':!backend-service/nginx/certs/*'     >"${private_key_scan_file}"     2>"${private_key_scan_error}"; then
+    cat "${private_key_scan_file}" >&2
+
+    fail       'private key material found outside ignored local cert folder'
+  else
+    private_key_scan_rc=$?
+
+    if [ "${private_key_scan_rc}" -eq 1 ]; then
+      pass 'no private key material found in source files'
+    else
+      cat "${private_key_scan_error}" >&2 || true
+
+      fail         "private key scan command failed with exit code ${private_key_scan_rc}"
+    fi
+  fi
+
+  rm -f     "${private_key_scan_file}"     "${private_key_scan_error}"
 else
-  pass 'no private key material found in source files'
+  fail 'unable to create temporary file for private key scan'
 fi
 
 if [ "$failures" -gt 0 ]; then
