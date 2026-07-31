@@ -41,3 +41,7 @@ reports/
 *.tfstate
 *.tfstate.*
 *.tfplan
+
+# Generated isolated Jest coverage
+backend-service/coverage-webhook/
+backend-service/coverage/
