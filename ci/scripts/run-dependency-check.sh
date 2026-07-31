@@ -110,10 +110,7 @@ POLICY_THRESHOLD="$(
   die \
     "dependency_check_fail_on_cvss is missing from pipeline policy"
 
-DEPENDENCY_CHECK_FAIL_ON_CVSS="${
-  DEPENDENCY_CHECK_FAIL_ON_CVSS:-
-  ${POLICY_THRESHOLD}
-}"
+DEPENDENCY_CHECK_FAIL_ON_CVSS="${DEPENDENCY_CHECK_FAIL_ON_CVSS:-${POLICY_THRESHOLD}}"
 
 if [ "${DEPENDENCY_CHECK_FAIL_ON_CVSS}" != "${POLICY_THRESHOLD}" ]; then
   die \
