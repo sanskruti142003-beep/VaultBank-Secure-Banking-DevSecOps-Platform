@@ -155,8 +155,8 @@
       "!**/entities/**",
       "!**/enums/**",
       "!**/*.guard.ts",
-      "!**/*.controller.ts",
-      "!**/*.repository.ts"
+      "!**/*.repository.ts",
+      "apps/payment-service/src/payments/webhook.controller.ts"
     ],
     "coverageDirectory": "coverage",
     "coverageReporters": [
