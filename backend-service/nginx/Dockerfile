@@ -17,12 +17,19 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY conf.d/ /etc/nginx/conf.d/
 COPY snippets/ /etc/nginx/snippets/
 COPY html/ /etc/nginx/html/
-COPY --from=cert-gen /certs/ /etc/nginx/certs/
+COPY --from=cert-gen --chown=nginx:nginx /certs/ /etc/nginx/certs/
 COPY scripts/nginx-reload.sh /usr/local/bin/nginx-reload
 
 RUN chmod +x /usr/local/bin/nginx-reload \
-    && mkdir -p /var/log/nginx
+    && mkdir -p /var/cache/nginx /tmp/nginx \
+    && chown -R nginx:nginx \
+        /var/cache/nginx \
+        /tmp/nginx \
+        /etc/nginx/certs \
+    && chmod 640 /etc/nginx/certs/self-signed.key
 
-EXPOSE 80 443
+EXPOSE 8080 8443
+
+USER nginx
 
 CMD ["nginx", "-g", "daemon off;"]

@@ -215,7 +215,33 @@ pipeline {
       }
     }
 
-    stage('09 Final evidence check') {
+    stage('09 Trivy filesystem, secret and IaC gate') {
+      options {
+        timeout(time: 30, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          export TRIVY_CACHE_DIR=/var/lib/jenkins/trivy-cache
+
+          bash ci/scripts/run-trivy-fs.sh
+        '''
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-06-trivy-fs/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('10 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
@@ -232,7 +258,25 @@ pipeline {
               reports/phase-02-ci-baseline/
           fi
 
-          echo "PASS: CI-only quality baseline completed"
+          test -s             reports/phase-06-trivy-fs/trivy-fs-combined.json
+
+          test -s             reports/phase-06-trivy-fs/trivy-fs-summary.json
+
+          test -s             reports/phase-06-trivy-fs/secret-misconfig.sarif
+
+          test -s             reports/phase-06-trivy-fs/trivy-fs-table.txt
+
+          grep -Eq             '"critical_vulnerabilities":[[:space:]]*0'             reports/phase-06-trivy-fs/trivy-fs-summary.json
+
+          grep -Eq             '"fixable_high_vulnerabilities":[[:space:]]*0'             reports/phase-06-trivy-fs/trivy-fs-summary.json
+
+          grep -Eq             '"high_or_critical_secrets":[[:space:]]*0'             reports/phase-06-trivy-fs/trivy-fs-summary.json
+
+          grep -Eq             '"high_or_critical_misconfigurations":[[:space:]]*0'             reports/phase-06-trivy-fs/trivy-fs-summary.json
+
+          grep -Eq             '"gate_passed":[[:space:]]*true'             reports/phase-06-trivy-fs/trivy-fs-summary.json
+
+          echo "PASS: CI and security evidence checks completed"
         '''
       }
     }
@@ -257,7 +301,7 @@ pipeline {
     }
 
     success {
-      echo 'GO: repository, backend and frontend CI baseline passed.'
+      echo 'GO: repository, application quality and security gates passed.'
     }
   }
 }

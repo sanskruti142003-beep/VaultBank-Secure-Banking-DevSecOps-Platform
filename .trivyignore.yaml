@@ -1,4 +1,20 @@
 vulnerabilities: []
-misconfigurations: []
+misconfigurations:
+  - id: AWS-0011
+    paths:
+      - "infra/frontend-s3-cloudfront/main.tf"
+    expired_at: 2026-09-30
+    statement: >-
+      AWS Free Tier POC uses NGINX ModSecurity with OWASP CRS as the
+      compensating web application firewall. Production CloudFront
+      must use AWS WAF before this exception expires.
+  - id: AWS-0132
+    paths:
+      - "infra/frontend-s3-cloudfront/main.tf"
+    expired_at: 2026-09-30
+    statement: >-
+      AWS Free Tier POC uses S3-managed AES-256 encryption. Production
+      must use SSE-KMS with a customer-managed key before this
+      exception expires.
 secrets: []
 licenses: []

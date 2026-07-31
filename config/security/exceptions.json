@@ -1,0 +1,28 @@
+{
+  "exceptions": [
+    {
+      "finding_id": "AVD-AWS-0011",
+      "tool": "Trivy",
+      "affected_component": "infra/frontend-s3-cloudfront/main.tf::aws_cloudfront_distribution.frontend",
+      "business_justification": "AWS Free Tier learning POC deliberately avoids the paid AWS WAF service.",
+      "compensating_control": "NGINX ModSecurity with OWASP CRS protects application API traffic. The S3 origin is private through CloudFront OAC, public access is blocked, HTTPS is enforced and security response headers are enabled.",
+      "owner": "DevSecOps project owner",
+      "approved_by": "Project owner",
+      "creation_date": "2026-08-01",
+      "expiry_date": "2026-09-30",
+      "tracking_issue": "VAULTBANK-POC-AWS-0011"
+    },
+    {
+      "finding_id": "AVD-AWS-0132",
+      "tool": "Trivy",
+      "affected_component": "infra/frontend-s3-cloudfront/main.tf::aws_s3_bucket_server_side_encryption_configuration.frontend",
+      "business_justification": "AWS Free Tier learning POC uses S3-managed AES-256 encryption instead of a chargeable customer-managed KMS key.",
+      "compensating_control": "The bucket is private, all public access is blocked, ownership is enforced, versioning is enabled and CloudFront accesses objects only through Origin Access Control.",
+      "owner": "DevSecOps project owner",
+      "approved_by": "Project owner",
+      "creation_date": "2026-08-01",
+      "expiry_date": "2026-09-30",
+      "tracking_issue": "VAULTBANK-POC-AWS-0132"
+    }
+  ]
+}

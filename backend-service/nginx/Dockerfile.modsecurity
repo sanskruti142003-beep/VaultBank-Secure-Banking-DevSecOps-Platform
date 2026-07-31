@@ -15,11 +15,13 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY conf.d/ /etc/nginx/conf.d/
 COPY snippets/ /etc/nginx/snippets/
 COPY html/ /etc/nginx/html/
-COPY --from=cert-gen /certs/ /etc/nginx/certs/
+COPY --from=cert-gen --chown=nginx:nginx /certs/ /etc/nginx/certs/
 
 ENV PARANOIA=1
 ENV ANOMALY_INBOUND=5
 ENV ANOMALY_OUTBOUND=4
 ENV REPORTING_LEVEL=2
 
-EXPOSE 80 443
+EXPOSE 8080 8443
+
+USER nginx
