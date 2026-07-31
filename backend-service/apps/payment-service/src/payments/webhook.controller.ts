@@ -53,17 +53,27 @@ export class WebhookController {
         signature,
         this.required('STRIPE_WEBHOOK_SECRET'),
       );
-      const object = event.data.object as Stripe.Event.Data.Object & {
-        id: string;
-      };
-      const statuses: Record<string, PaymentStatus> = {
-        'payment_intent.succeeded': PaymentStatus.SUCCESS,
-        'payment_intent.payment_failed': PaymentStatus.FAILED,
-        'charge.refunded': PaymentStatus.REFUNDED,
-      };
-      const status = statuses[event.type];
-      if (status) {
-        await this.payments.applyGatewayStatus(object.id, status);
+      switch (event.type) {
+        case 'payment_intent.succeeded':
+          await this.payments.applyGatewayStatus(
+            event.data.object.id,
+            PaymentStatus.SUCCESS,
+          );
+          break;
+
+        case 'payment_intent.payment_failed':
+          await this.payments.applyGatewayStatus(
+            event.data.object.id,
+            PaymentStatus.FAILED,
+          );
+          break;
+
+        case 'charge.refunded':
+          await this.payments.applyGatewayStatus(
+            event.data.object.id,
+            PaymentStatus.REFUNDED,
+          );
+          break;
       }
       return { received: true };
     } catch (error: unknown) {
