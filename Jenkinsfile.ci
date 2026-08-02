@@ -241,7 +241,34 @@ pipeline {
       }
     }
 
-    stage('10 Final evidence check') {
+    stage('10 Deterministic Docker image build') {
+      options {
+        timeout(time: 45, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          export DOCKER_BUILDKIT=1
+          export LOCAL_IMAGE_PREFIX=vaultbank
+
+          bash ci/scripts/build-images.sh
+        '''
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-07-build/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('11 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
@@ -276,7 +303,48 @@ pipeline {
 
           grep -Eq             '"gate_passed":[[:space:]]*true'             reports/phase-06-trivy-fs/trivy-fs-summary.json
 
-          echo "PASS: CI and security evidence checks completed"
+          test -s             reports/phase-07-build/images.txt
+
+          test -s             reports/phase-07-build/image-manifest.json
+
+          IMAGE_COUNT="$(
+            wc -l               < reports/phase-07-build/images.txt |
+            tr -d '[:space:]'
+          )"
+
+          if [ "${IMAGE_COUNT}" -ne 6 ]; then
+            echo               "FAIL: expected 6 built images, found ${IMAGE_COUNT}"
+            exit 1
+          fi
+
+          if grep -Eq             ':latest$'             reports/phase-07-build/images.txt; then
+            echo "FAIL: latest image tag is prohibited"
+            exit 1
+          fi
+
+          while IFS= read -r image; do
+            if [ -z "${image}" ]; then
+              echo "FAIL: empty image reference"
+              exit 1
+            fi
+
+            docker image inspect               "${image}"               >/dev/null
+
+            runtime_user="$(
+              docker image inspect                 --format '{{.Config.User}}'                 "${image}"
+            )"
+
+            case "${runtime_user}" in
+              "" | "0" | "root")
+                echo                   "FAIL: ${image} has invalid runtime user: ${runtime_user:-empty}"
+                exit 1
+                ;;
+            esac
+
+            echo               "PASS: ${image} runtime user=${runtime_user}"
+          done             < reports/phase-07-build/images.txt
+
+          echo             "PASS: CI, security and deterministic image evidence checks completed"
         '''
       }
     }
@@ -301,7 +369,7 @@ pipeline {
     }
 
     success {
-      echo 'GO: repository, application quality and security gates passed.'
+      echo 'GO: repository, application quality, security gates and deterministic image builds passed.'
     }
   }
 }
