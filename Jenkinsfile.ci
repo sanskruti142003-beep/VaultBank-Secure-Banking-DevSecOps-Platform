@@ -390,7 +390,47 @@ pipeline {
       }
     }
 
-    stage('15 Final evidence check') {
+    stage('15 Trivy Harbor digest security gate') {
+      when {
+        branch 'main'
+      }
+
+      options {
+        timeout(time: 60, unit: 'MINUTES')
+      }
+
+      steps {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'harbor-vault-bank-robot',
+            usernameVariable: 'HARBOR_USERNAME',
+            passwordVariable: 'HARBOR_PASSWORD'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+            set +x
+
+            export HARBOR_REGISTRY='harbor.vaultbank.internal:9443'
+            export HARBOR_PROJECT='vault-bank'
+
+            bash ci/scripts/scan-harbor-digests.sh
+          '''
+        }
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-11-trivy-registry/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('16 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
