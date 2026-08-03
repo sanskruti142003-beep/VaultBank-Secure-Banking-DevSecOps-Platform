@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: vault-bank-staging
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: vault-bank-staging
+    app.kubernetes.io/part-of: vault-bank
+    environment: staging
+spec:
+  description: Restricted Vault Bank staging deployment
+
+  sourceRepos:
+    - https://github.com/sonappatil/vault_bank.git
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: vault-bank-staging
+
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: Deployment
+
+  orphanedResources:
+    warn: true

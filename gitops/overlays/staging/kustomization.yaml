@@ -1,36 +1,44 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: vaultbank-staging
+namespace: vault-bank-staging
 
 resources:
   - namespace.yaml
   - ../../base
+  - runtime-serviceaccount.yaml
   - resource-quota.yaml
 
 images:
   - name: auth-service
-    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/auth-service
-    newTag: replace-me
+    newName: harbor.vaultbank.internal:9443/vault-bank/auth-service
+    digest: sha256:546ab7a37d4962a38db41a0f3c4ef54965691df56310d3cc88660f5e41f80e46
   - name: account-service
-    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/account-service
-    newTag: replace-me
+    newName: harbor.vaultbank.internal:9443/vault-bank/account-service
+    digest: sha256:7a685a7a851a2934de9ca1256a05493a3f4ad0d0ae68d1f5f2bc3186049b9948
   - name: transaction-service
-    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/transaction-service
-    newTag: replace-me
+    newName: harbor.vaultbank.internal:9443/vault-bank/transaction-service
+    digest: sha256:3c7b7091aa1517f8b442e12bed07c0964226bf4e991ef497463702893d9775b8
   - name: payment-service
-    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/payment-service
-    newTag: replace-me
+    newName: harbor.vaultbank.internal:9443/vault-bank/payment-service
+    digest: sha256:06fcdf26a4f9d3dfbcc2248bdddc7c717cdf278073f04aeac5705616274d2ac2
   - name: notification-service
-    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/notification-service
-    newTag: replace-me
-  - name: nginx-gateway
-    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/nginx-gateway
-    newTag: replace-me
+    newName: harbor.vaultbank.internal:9443/vault-bank/notification-service
+    digest: sha256:7469bd8960d283a0b4da496c3d0b670efbb24b6c7ec81336d16ac438d18802a1
   - name: frontend
-    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/vaultbank/frontend
-    newTag: replace-me
+    newName: harbor.vaultbank.internal:9443/vault-bank/frontend
+    digest: sha256:030f94a7764a4d2ba2afa98eab1d54a1b8637fe110901b3a19d499233527210f
 
 patches:
-  - path: nodeport-services.yaml
-  - path: runtime-config-patch.yaml
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      labelSelector: app.kubernetes.io/part-of=vaultbank
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/serviceAccountName
+        value: vault-bank-runtime
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
