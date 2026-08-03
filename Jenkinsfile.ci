@@ -294,7 +294,33 @@ pipeline {
       }
     }
 
-    stage('12 Final evidence check') {
+    stage('12 Syft SBOM generation and validation') {
+      options {
+        timeout(time: 45, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          export SYFT_CHECK_FOR_APP_UPDATE=false
+
+          bash ci/scripts/generate-sboms.sh
+        '''
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-09-sbom/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('13 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
@@ -459,6 +485,185 @@ PYTHON
           echo \
             "PASS: container-image security evidence checks completed"
 
+
+          test -s \
+            reports/phase-09-sbom/sbom-summary.json
+
+          test -s \
+            reports/phase-09-sbom/sbom-summary.txt
+
+          test -s \
+            reports/phase-09-sbom/sbom-manifest.json
+
+          test -s \
+            reports/phase-09-sbom/sbom-checksums.sha256
+
+          test -s \
+            reports/phase-09-sbom/sbom-metadata.txt
+
+          python3 - <<'PYTHON'
+import json
+from pathlib import Path
+
+report_root = Path(
+    "reports/phase-09-sbom"
+)
+
+summary_path = (
+    report_root / "sbom-summary.json"
+)
+
+manifest_path = (
+    report_root / "sbom-manifest.json"
+)
+
+summary = json.loads(
+    summary_path.read_text(encoding="utf-8")
+)
+
+manifest = json.loads(
+    manifest_path.read_text(encoding="utf-8")
+)
+
+expected_summary = {
+    "images_processed": 6,
+    "syft_json_files": 6,
+    "cyclonedx_json_files": 6,
+    "spdx_json_files": 6,
+    "total_sbom_files": 18,
+    "validation_passed": True,
+}
+
+for name, expected in expected_summary.items():
+    actual = summary.get(name)
+
+    if actual != expected:
+        raise SystemExit(
+            f"FAIL: SBOM summary {name} "
+            f"expected {expected}, found {actual}"
+        )
+
+images = manifest.get("images") or []
+
+if len(images) != 6:
+    raise SystemExit(
+        f"FAIL: expected 6 SBOM manifest entries, "
+        f"found {len(images)}"
+    )
+
+image_names = [
+    row.get("image")
+    for row in images
+]
+
+if len(set(image_names)) != 6:
+    raise SystemExit(
+        "FAIL: duplicate images found "
+        "in SBOM manifest"
+    )
+
+for row in images:
+    image = row.get("image", "unknown")
+
+    if row.get("validation_passed") is not True:
+        raise SystemExit(
+            f"FAIL: SBOM validation failed "
+            f"for {image}"
+        )
+
+    for format_name in (
+        "syft_json",
+        "cyclonedx_json",
+        "spdx_json",
+    ):
+        format_data = row.get(format_name) or {}
+
+        file_path = Path(
+            format_data.get("file") or ""
+        )
+
+        checksum = str(
+            format_data.get("sha256") or ""
+        )
+
+        if not file_path.is_file():
+            raise SystemExit(
+                f"FAIL: missing {format_name} "
+                f"file for {image}"
+            )
+
+        if len(checksum) != 64:
+            raise SystemExit(
+                f"FAIL: invalid {format_name} "
+                f"checksum for {image}"
+            )
+
+requirements = (
+    (
+        "syft-json",
+        "*.syft.json",
+        6,
+    ),
+    (
+        "cyclonedx-json",
+        "*.cdx.json",
+        6,
+    ),
+    (
+        "spdx-json",
+        "*.spdx.json",
+        6,
+    ),
+)
+
+sbom_root = report_root / "sbom"
+
+for directory, pattern, expected in requirements:
+    count = len(
+        list(
+            (sbom_root / directory).glob(pattern)
+        )
+    )
+
+    if count != expected:
+        raise SystemExit(
+            f"FAIL: expected {expected} files "
+            f"in {directory}, found {count}"
+        )
+
+checksum_lines = [
+    line
+    for line in (
+        report_root / "sbom-checksums.sha256"
+    ).read_text(
+        encoding="utf-8"
+    ).splitlines()
+    if line.strip()
+]
+
+if len(checksum_lines) != 18:
+    raise SystemExit(
+        "FAIL: expected 18 SBOM checksum "
+        f"entries, found {len(checksum_lines)}"
+    )
+
+print(
+    "PASS: six images and 18 SBOM files "
+    "verified in final evidence"
+)
+PYTHON
+
+          (
+            cd reports/phase-09-sbom
+
+            sha256sum \
+              --check \
+              sbom-checksums.sha256
+          )
+
+          echo \
+            "PASS: SBOM files and checksums verified"
+
         '''
       }
     }
@@ -483,7 +688,7 @@ PYTHON
     }
 
     success {
-      echo 'GO: repository, application quality, security gates and deterministic image builds passed.'
+      echo 'GO: quality, security, deterministic image build and validated SBOM gates passed.'
     }
   }
 }
