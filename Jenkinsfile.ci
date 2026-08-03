@@ -430,7 +430,54 @@ pipeline {
       }
     }
 
-    stage('16 Final evidence check') {
+    stage('16 Cosign KMS signatures and SPDX attestations') {
+      when {
+        branch 'main'
+      }
+
+      options {
+        timeout(time: 60, unit: 'MINUTES')
+      }
+
+      steps {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'harbor-vault-bank-robot',
+            usernameVariable: 'HARBOR_USERNAME',
+            passwordVariable: 'HARBOR_PASSWORD'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+            set +x
+
+            export AWS_REGION='us-east-1'
+            export AWS_DEFAULT_REGION='us-east-1'
+            export AWS_EC2_METADATA_DISABLED='false'
+
+            export NO_PROXY="${NO_PROXY:+${NO_PROXY},}169.254.169.254"
+            export no_proxy="${no_proxy:+${no_proxy},}169.254.169.254"
+
+            export HARBOR_REGISTRY='harbor.vaultbank.internal:9443'
+            export HARBOR_PROJECT='vault-bank'
+
+            bash ci/scripts/sign-attest-harbor-images.sh
+          '''
+        }
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-12-cosign-oci/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('17 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
@@ -866,6 +913,122 @@ PYTHON
 
           echo \
             "PASS: Cosign bundles and checksums verified"
+
+
+          if [ "${BRANCH_NAME:-}" = "main" ]; then
+            COSIGN_REPORT_DIR='reports/phase-12-cosign-oci'
+
+            test -s \
+              "${COSIGN_REPORT_DIR}/cosign-oci-summary.json"
+
+            test -s \
+              "${COSIGN_REPORT_DIR}/cosign-oci-checksums.sha256"
+
+            test -s \
+              "${COSIGN_REPORT_DIR}/cosign-kms-public-key.pem"
+
+            python3 - <<'PYTHON'
+import json
+from pathlib import Path
+
+report_root = Path(
+    "reports/phase-12-cosign-oci"
+)
+
+summary = json.loads(
+    (
+        report_root /
+        "cosign-oci-summary.json"
+    ).read_text(encoding="utf-8")
+)
+
+expected = {
+    "cosign_version": "3.1.2",
+    "aws_region": "us-east-1",
+    "registry": (
+        "harbor.vaultbank.internal:9443"
+    ),
+    "project": "vault-bank",
+    "predicate_type": (
+        "https://spdx.dev/Document"
+    ),
+    "images_signed": 6,
+    "signatures_verified": 6,
+    "spdx_attestations_created": 6,
+    "spdx_attestations_verified": 6,
+    "private_key_files": 0,
+    "transparency_log_uploaded": False,
+    "registry_tls_verified": True,
+    "validation_passed": True,
+}
+
+for field, expected_value in expected.items():
+    actual_value = summary.get(field)
+
+    if actual_value != expected_value:
+        raise SystemExit(
+            f"FAIL: Cosign summary {field} "
+            f"expected {expected_value}, "
+            f"found {actual_value}"
+        )
+
+images = summary.get("images") or []
+
+if len(images) != 6:
+    raise SystemExit(
+        "FAIL: expected six Cosign image results"
+    )
+
+services = {
+    image.get("service")
+    for image in images
+}
+
+references = {
+    image.get("immutable_reference")
+    for image in images
+}
+
+if len(services) != 6:
+    raise SystemExit(
+        "FAIL: Cosign services are not unique"
+    )
+
+if len(references) != 6:
+    raise SystemExit(
+        "FAIL: Cosign digest references are not unique"
+    )
+
+for image in images:
+    if image.get("signature_verified") is not True:
+        raise SystemExit(
+            "FAIL: an image signature is not verified"
+        )
+
+    if image.get("attestation_verified") is not True:
+        raise SystemExit(
+            "FAIL: an SPDX attestation is not verified"
+        )
+
+print(
+    "PASS: Cosign OCI signing evidence verified"
+)
+PYTHON
+
+            (
+              cd "${COSIGN_REPORT_DIR}"
+
+              sha256sum \
+                --check \
+                cosign-oci-checksums.sha256
+            )
+
+            echo \
+              "PASS: Cosign signatures, attestations and checksums verified"
+          else
+            echo \
+              "INFO: Cosign OCI evidence check skipped outside main"
+          fi
 
         '''
       }
