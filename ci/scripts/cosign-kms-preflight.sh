@@ -170,10 +170,49 @@ rm -rf "${REPORT_DIR}"
 mkdir -p "${REPORT_DIR}"
 
 SOURCE_COMMIT="$(full_commit)"
-SOURCE_BRANCH="$(git -C "${ROOT_DIR}" branch --show-current)"
+
+resolve_source_branch() {
+  local branch=""
+
+  if [ -n "${CHANGE_BRANCH:-}" ]; then
+    branch="${CHANGE_BRANCH}"
+  elif [ -n "${BRANCH_NAME:-}" ]; then
+    branch="${BRANCH_NAME}"
+  elif [ -n "${GIT_LOCAL_BRANCH:-}" ]; then
+    branch="${GIT_LOCAL_BRANCH}"
+  elif [ -n "${GIT_BRANCH:-}" ]; then
+    branch="${GIT_BRANCH}"
+  else
+    branch="$(
+      git -C "${ROOT_DIR}"         branch --show-current
+    )"
+  fi
+
+  if [ -z "${branch}" ]; then
+    branch="$(
+      git -C "${ROOT_DIR}"         for-each-ref         --format='%(refname:short)'         --points-at HEAD         refs/heads         refs/remotes/origin |
+      awk '
+        $0 != "origin/HEAD" {
+          print
+          exit
+        }
+      '
+    )"
+  fi
+
+  branch="${branch#refs/heads/}"
+  branch="${branch#refs/remotes/}"
+  branch="${branch#origin/}"
+
+  printf '%s\n' "${branch}"
+}
+
+SOURCE_BRANCH="$(resolve_source_branch)"
 
 [ -n "${SOURCE_BRANCH}" ] ||
-  die "Unable to determine source branch"
+  die     "Unable to determine source branch from Jenkins or Git metadata"
+
+log "Resolved source branch: ${SOURCE_BRANCH}"
 
 log "Exporting public key from AWS KMS"
 
