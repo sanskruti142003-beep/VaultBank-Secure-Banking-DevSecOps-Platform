@@ -320,7 +320,37 @@ pipeline {
       }
     }
 
-    stage('13 Final evidence check') {
+    stage('13 Cosign AWS KMS signing preflight') {
+      options {
+        timeout(time: 20, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          export AWS_REGION=us-east-1
+          export AWS_DEFAULT_REGION=us-east-1
+          export AWS_EC2_METADATA_DISABLED=false
+          export NO_PROXY="${NO_PROXY:+${NO_PROXY},}169.254.169.254"
+          export no_proxy="${no_proxy:+${no_proxy},}169.254.169.254"
+
+          bash ci/scripts/cosign-kms-preflight.sh
+        '''
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-10-cosign-kms-preflight/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('14 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
@@ -663,6 +693,99 @@ PYTHON
 
           echo \
             "PASS: SBOM files and checksums verified"
+
+
+          test -s \
+            reports/phase-10-cosign-kms-preflight/cosign-preflight-summary.json
+
+          test -s \
+            reports/phase-10-cosign-kms-preflight/cosign-preflight-checksums.sha256
+
+          test -s \
+            reports/phase-10-cosign-kms-preflight/cosign.pub
+
+          test -s \
+            reports/phase-10-cosign-kms-preflight/subject.sigstore.json
+
+          test -s \
+            reports/phase-10-cosign-kms-preflight/attestation.sigstore.json
+
+          python3 - <<'PYTHON'
+import json
+from pathlib import Path
+
+report_root = Path(
+    "reports/phase-10-cosign-kms-preflight"
+)
+
+summary = json.loads(
+    (
+        report_root /
+        "cosign-preflight-summary.json"
+    ).read_text(encoding="utf-8")
+)
+
+expected = {
+    "cosign_version": "3.1.2",
+    "aws_region": "us-east-1",
+    "kms_state": "Enabled",
+    "kms_usage": "SIGN_VERIFY",
+    "kms_spec": "ECC_NIST_P256",
+    "blob_kms_verified": True,
+    "blob_public_key_verified": True,
+    "tamper_rejected": True,
+    "attestation_kms_verified": True,
+    "attestation_public_key_verified": True,
+    "claims_checking_enabled": True,
+    "private_key_files": 0,
+    "validation_passed": True,
+}
+
+for name, expected_value in expected.items():
+    actual = summary.get(name)
+
+    if actual != expected_value:
+        raise SystemExit(
+            f"FAIL: Cosign summary {name} "
+            f"expected {expected_value}, found {actual}"
+        )
+
+private_key_files = list(
+    report_root.glob("*.key")
+)
+
+private_key_files.extend(
+    path
+    for path in report_root.iterdir()
+    if path.is_file()
+    and "private" in path.name.lower()
+)
+
+if private_key_files:
+    raise SystemExit(
+        "FAIL: private-key-like files found: "
+        + ", ".join(
+            str(path)
+            for path in private_key_files
+        )
+    )
+
+print(
+    "PASS: Cosign AWS KMS preflight evidence verified"
+)
+PYTHON
+
+          (
+            cd \
+              reports/phase-10-cosign-kms-preflight
+
+            sha256sum \
+              --check \
+              cosign-preflight-checksums.sha256
+          )
+
+          echo \
+            "PASS: Cosign bundles and checksums verified"
 
         '''
       }
