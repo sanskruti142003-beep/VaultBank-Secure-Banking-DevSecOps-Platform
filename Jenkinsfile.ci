@@ -268,7 +268,33 @@ pipeline {
       }
     }
 
-    stage('11 Final evidence check') {
+    stage('11 Trivy container image security gate') {
+      options {
+        timeout(time: 45, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          export TRIVY_CACHE_DIR=/var/lib/jenkins/trivy-cache
+
+          bash ci/scripts/scan-images.sh
+        '''
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-08-trivy-image/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('12 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
@@ -345,6 +371,94 @@ pipeline {
           done             < reports/phase-07-build/images.txt
 
           echo             "PASS: CI, security and deterministic image evidence checks completed"
+
+          test -s \
+            reports/phase-08-trivy-image/trivy-image-summary.json
+
+          test -s \
+            reports/phase-08-trivy-image/trivy-image-summary.txt
+
+          test -s \
+            reports/phase-08-trivy-image/trivy-image-metadata.txt
+
+          python3 - <<'PYTHON'
+import json
+from pathlib import Path
+
+report_root = Path(
+    "reports/phase-08-trivy-image"
+)
+
+summary_path = (
+    report_root / "trivy-image-summary.json"
+)
+
+summary = json.loads(
+    summary_path.read_text(encoding="utf-8")
+)
+
+if summary.get("images_scanned") != 6:
+    raise SystemExit(
+        "FAIL: Trivy image summary does not contain 6 images"
+    )
+
+totals = summary.get("totals") or {}
+
+required_zero = {
+    "critical_vulnerabilities": 0,
+    "fixable_high_vulnerabilities": 0,
+    "high_or_critical_secrets": 0,
+    "high_or_critical_misconfigurations": 0,
+}
+
+for name, expected in required_zero.items():
+    actual = totals.get(name)
+
+    if actual != expected:
+        raise SystemExit(
+            f"FAIL: {name} expected {expected}, found {actual}"
+        )
+
+if summary.get("gate_passed") is not True:
+    raise SystemExit(
+        "FAIL: Trivy image gate_passed is not true"
+    )
+
+images = summary.get("images") or []
+
+if len(images) != 6:
+    raise SystemExit(
+        f"FAIL: expected 6 image entries, found {len(images)}"
+    )
+
+report_requirements = (
+    ("json", "*.json"),
+    ("table", "*.txt"),
+    ("sarif", "*.sarif"),
+)
+
+for directory, extension in report_requirements:
+    report_count = len(
+        list(
+            (report_root / directory).glob(extension)
+        )
+    )
+
+    if report_count != 6:
+        raise SystemExit(
+            f"FAIL: expected 6 {directory} reports, "
+            f"found {report_count}"
+        )
+
+print(
+    "PASS: six Trivy image reports and "
+    "zero-finding security gate verified"
+)
+PYTHON
+
+          echo \
+            "PASS: container-image security evidence checks completed"
+
         '''
       }
     }
