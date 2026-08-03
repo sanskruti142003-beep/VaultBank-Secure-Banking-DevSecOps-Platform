@@ -477,7 +477,42 @@ pipeline {
       }
     }
 
-    stage('17 Final evidence check') {
+    stage('17 Verified release manifest') {
+      when {
+        branch 'main'
+      }
+
+      options {
+        timeout(time: 20, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          export AWS_REGION='us-east-1'
+          export AWS_DEFAULT_REGION='us-east-1'
+          export AWS_EC2_METADATA_DISABLED='false'
+
+          export NO_PROXY="${NO_PROXY:+${NO_PROXY},}169.254.169.254"
+          export no_proxy="${no_proxy:+${no_proxy},}169.254.169.254"
+
+          bash ci/scripts/create-release-manifest.sh
+        '''
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-13-release-manifest/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('18 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
