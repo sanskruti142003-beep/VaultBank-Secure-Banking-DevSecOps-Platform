@@ -1,7 +1,9 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: vaultbank-staging
+  name: vault-bank-staging
   labels:
-    app.kubernetes.io/part-of: vaultbank
+    app.kubernetes.io/name: vault-bank
+    app.kubernetes.io/part-of: vault-bank
+    application: vault-bank
     environment: staging

@@ -184,7 +184,7 @@
     "axios": "1.18.1",
     "body-parser": "2.3.0",
     "express": "5.2.1",
-    "fast-uri": "3.1.4",
+    "fast-uri": "3.1.5",
     "file-type": "21.3.4",
     "lodash": "4.18.1",
     "qs": "6.15.2",
