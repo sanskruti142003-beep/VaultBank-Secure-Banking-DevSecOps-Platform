@@ -45,8 +45,21 @@ require_command awk
 [ -f "${VERSIONS_FILE}" ] ||
   die "Missing tool-version policy: ${VERSIONS_FILE}"
 
+PIPELINE_HARBOR_PROJECT="${HARBOR_PROJECT:-}"
+
 # shellcheck disable=SC1090
 source "${VERSIONS_FILE}"
+
+POLICY_HARBOR_PROJECT="${HARBOR_PROJECT:-}"
+
+if [ -n "${PIPELINE_HARBOR_PROJECT}" ] &&
+   [ -n "${POLICY_HARBOR_PROJECT}" ] &&
+   [ "${PIPELINE_HARBOR_PROJECT}" != "${POLICY_HARBOR_PROJECT}" ]; then
+
+  die     "Harbor project mismatch: pipeline=${PIPELINE_HARBOR_PROJECT}, policy=${POLICY_HARBOR_PROJECT}"
+fi
+
+HARBOR_PROJECT="${PIPELINE_HARBOR_PROJECT:-${POLICY_HARBOR_PROJECT}}"
 
 [ -n "${COSIGN_VERSION:-}" ] ||
   die "COSIGN_VERSION is missing from ${VERSIONS_FILE}"
