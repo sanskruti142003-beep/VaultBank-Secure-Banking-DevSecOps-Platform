@@ -29,5 +29,18 @@ RUN npm ci --omit=dev --legacy-peer-deps \
         /usr/local/share/man/man1/npm* \
         /usr/local/share/man/man1/npx*
 COPY --from=build /app/dist ./dist
+COPY docker-healthcheck.cjs ./docker-healthcheck.cjs
+
+# Remove third-party bcrypt build fixtures from the runtime image.
+# They are not required for application execution.
+RUN find /app/node_modules \
+      -type f \
+      -path '*/bcrypt/Dockerfile*' \
+      -delete \
+    && test -z "$(find /app/node_modules -type f -path '*/bcrypt/Dockerfile*' -print -quit)"
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["node", "/app/docker-healthcheck.cjs"]
+
 USER node
 CMD ["sh", "-c", "node dist/apps/${SERVICE_NAME}/apps/${SERVICE_NAME}/src/main.js"]
