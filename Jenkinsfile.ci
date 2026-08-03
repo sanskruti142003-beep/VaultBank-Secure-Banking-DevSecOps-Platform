@@ -350,7 +350,47 @@ pipeline {
       }
     }
 
-    stage('14 Final evidence check') {
+    stage('14 Harbor image publication and digest capture') {
+      when {
+        branch 'main'
+      }
+
+      options {
+        timeout(time: 45, unit: 'MINUTES')
+      }
+
+      steps {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'harbor-vault-bank-robot',
+            usernameVariable: 'HARBOR_USERNAME',
+            passwordVariable: 'HARBOR_PASSWORD'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+            set +x
+
+            export HARBOR_REGISTRY='harbor.vaultbank.internal:9443'
+            export HARBOR_PROJECT='vault-bank'
+
+            bash ci/scripts/publish-images-to-harbor.sh
+          '''
+        }
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-10-harbor-publish/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('15 Final evidence check') {
       steps {
         sh '''
           set -Eeuo pipefail
