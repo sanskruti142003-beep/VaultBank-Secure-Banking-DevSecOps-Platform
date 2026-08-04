@@ -66,6 +66,7 @@ spec:
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
           envFrom:
             - secretRef:
                 name: postgres-bootstrap-secrets
@@ -217,6 +218,7 @@ spec:
                 --requirepass "${REDIS_PASSWORD}"
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
           envFrom:
             - secretRef:
                 name: redis-auth
@@ -346,6 +348,7 @@ spec:
             - /etc/rabbitmq/docker-entrypoint-custom.sh
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
           envFrom:
             - secretRef:
                 name: rabbitmq-bootstrap-secrets

@@ -21,3 +21,16 @@ configMapGenerator:
       - rabbitmq.conf=config/rabbitmq/rabbitmq.conf
       - definitions.template.json=config/rabbitmq/definitions.json
       - docker-entrypoint-custom.sh=config/rabbitmq/entrypoint.sh
+
+images:
+  - name: postgres-runtime
+    newName: docker.io/library/postgres
+    digest: sha256:3d0f7584ed7d04e27fa050d6683a74746608faf21f202be78460d679cc56461f
+
+  - name: redis-runtime
+    newName: docker.io/library/redis
+    digest: sha256:cd218f4b106a332c5c992e38a9480bfb9d7e9f8f7b0ec9a0023bfa36d9a408f9
+
+  - name: rabbitmq-runtime
+    newName: docker.io/library/rabbitmq
+    digest: sha256:09b39ca8a3e884e91cab8842cd41264de21aab0625e1f1d016a9a3135ba590ef
