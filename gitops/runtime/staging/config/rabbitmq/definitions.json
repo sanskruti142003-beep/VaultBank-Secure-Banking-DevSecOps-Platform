@@ -1,0 +1,379 @@
+{
+  "users": [
+    {
+      "name": "banking_admin",
+      "password_hash": "__RABBITMQ_ADMIN_PASSWORD_HASH__",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": [
+        "administrator"
+      ]
+    },
+    {
+      "name": "auth_svc",
+      "password_hash": "__AUTH_SVC_PASSWORD_HASH__",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": []
+    },
+    {
+      "name": "account_svc",
+      "password_hash": "__ACCOUNT_SVC_PASSWORD_HASH__",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": []
+    },
+    {
+      "name": "transaction_svc",
+      "password_hash": "__TRANSACTION_SVC_PASSWORD_HASH__",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": []
+    },
+    {
+      "name": "payment_svc",
+      "password_hash": "__PAYMENT_SVC_PASSWORD_HASH__",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": []
+    },
+    {
+      "name": "audit_svc",
+      "password_hash": "__AUDIT_SVC_PASSWORD_HASH__",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": []
+    },
+    {
+      "name": "notification_svc",
+      "password_hash": "__NOTIFICATION_SVC_PASSWORD_HASH__",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": []
+    },
+    {
+      "name": "dead_letter_svc",
+      "password_hash": "__DEAD_LETTER_SVC_PASSWORD_HASH__",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": []
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/banking-staging"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "banking_admin",
+      "vhost": "/banking-staging",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    },
+    {
+      "user": "auth_svc",
+      "vhost": "/banking-staging",
+      "configure": "^$",
+      "write": "^banking\\.events$",
+      "read": "^$"
+    },
+    {
+      "user": "account_svc",
+      "vhost": "/banking-staging",
+      "configure": "^account\\.queue$",
+      "write": "^banking\\.events$",
+      "read": "^account\\.queue$"
+    },
+    {
+      "user": "transaction_svc",
+      "vhost": "/banking-staging",
+      "configure": "^$",
+      "write": "^banking\\.events$",
+      "read": "^$"
+    },
+    {
+      "user": "payment_svc",
+      "vhost": "/banking-staging",
+      "configure": "^payment\\.queue$",
+      "write": "^banking\\.events$",
+      "read": "^payment\\.queue$"
+    },
+    {
+      "user": "audit_svc",
+      "vhost": "/banking-staging",
+      "configure": "^audit\\.queue$",
+      "write": "^$",
+      "read": "^audit\\.queue$"
+    },
+    {
+      "user": "notification_svc",
+      "vhost": "/banking-staging",
+      "configure": "^notification\\.queue$",
+      "write": "^banking\\.events$",
+      "read": "^notification\\.queue$"
+    },
+    {
+      "user": "dead_letter_svc",
+      "vhost": "/banking-staging",
+      "configure": "^.*\\.queue\\.dlq$",
+      "write": "^$",
+      "read": "^.*\\.queue\\.dlq$"
+    }
+  ],
+  "topic_permissions": [
+    {
+      "user": "auth_svc",
+      "vhost": "/banking-staging",
+      "exchange": "banking.events",
+      "write": "^(user\\.(registered|login|logout|password_reset|otp_issued)|audit\\.request)$",
+      "read": "^$"
+    },
+    {
+      "user": "account_svc",
+      "vhost": "/banking-staging",
+      "exchange": "banking.events",
+      "write": "^(account\\.(created|frozen|closed)|kyc\\.updated|audit\\.request)$",
+      "read": "^transaction\\..+$"
+    },
+    {
+      "user": "transaction_svc",
+      "vhost": "/banking-staging",
+      "exchange": "banking.events",
+      "write": "^(transaction\\.(initiated|completed|failed|reversed)|audit\\.request)$",
+      "read": "^$"
+    },
+    {
+      "user": "payment_svc",
+      "vhost": "/banking-staging",
+      "exchange": "banking.events",
+      "write": "^(payment\\.(success|failed|refunded)|audit\\.request)$",
+      "read": "^transaction\\.(completed|failed)$"
+    },
+    {
+      "user": "audit_svc",
+      "vhost": "/banking-staging",
+      "exchange": "banking.events",
+      "write": "^$",
+      "read": ".*"
+    },
+    {
+      "user": "notification_svc",
+      "vhost": "/banking-staging",
+      "exchange": "banking.events",
+      "write": "^audit\\.request$",
+      "read": "^(user\\.registered|transaction\\.completed|payment\\.(success|failed))$"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "banking.events",
+      "vhost": "/banking-staging",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "banking.events.dlx",
+      "vhost": "/banking-staging",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "audit.queue",
+      "vhost": "/banking-staging",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 86400000,
+        "x-max-length": 100000,
+        "x-dead-letter-exchange": "banking.events.dlx",
+        "x-dead-letter-routing-key": "audit.queue.dlq"
+      }
+    },
+    {
+      "name": "audit.queue.dlq",
+      "vhost": "/banking-staging",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 86400000,
+        "x-max-length": 100000
+      }
+    },
+    {
+      "name": "notification.queue",
+      "vhost": "/banking-staging",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 86400000,
+        "x-max-length": 100000,
+        "x-dead-letter-exchange": "banking.events.dlx",
+        "x-dead-letter-routing-key": "notification.queue.dlq"
+      }
+    },
+    {
+      "name": "notification.queue.dlq",
+      "vhost": "/banking-staging",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 86400000,
+        "x-max-length": 100000
+      }
+    },
+    {
+      "name": "account.queue",
+      "vhost": "/banking-staging",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 86400000,
+        "x-max-length": 100000,
+        "x-dead-letter-exchange": "banking.events.dlx",
+        "x-dead-letter-routing-key": "account.queue.dlq"
+      }
+    },
+    {
+      "name": "account.queue.dlq",
+      "vhost": "/banking-staging",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 86400000,
+        "x-max-length": 100000
+      }
+    },
+    {
+      "name": "payment.queue",
+      "vhost": "/banking-staging",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 86400000,
+        "x-max-length": 100000,
+        "x-dead-letter-exchange": "banking.events.dlx",
+        "x-dead-letter-routing-key": "payment.queue.dlq"
+      }
+    },
+    {
+      "name": "payment.queue.dlq",
+      "vhost": "/banking-staging",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-message-ttl": 86400000,
+        "x-max-length": 100000
+      }
+    }
+  ],
+  "bindings": [
+    {
+      "source": "banking.events",
+      "vhost": "/banking-staging",
+      "destination": "audit.queue",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events",
+      "vhost": "/banking-staging",
+      "destination": "notification.queue",
+      "destination_type": "queue",
+      "routing_key": "user.registered",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events",
+      "vhost": "/banking-staging",
+      "destination": "notification.queue",
+      "destination_type": "queue",
+      "routing_key": "transaction.completed",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events",
+      "vhost": "/banking-staging",
+      "destination": "notification.queue",
+      "destination_type": "queue",
+      "routing_key": "payment.success",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events",
+      "vhost": "/banking-staging",
+      "destination": "notification.queue",
+      "destination_type": "queue",
+      "routing_key": "payment.failed",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events",
+      "vhost": "/banking-staging",
+      "destination": "account.queue",
+      "destination_type": "queue",
+      "routing_key": "transaction.#",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events",
+      "vhost": "/banking-staging",
+      "destination": "payment.queue",
+      "destination_type": "queue",
+      "routing_key": "transaction.completed",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events",
+      "vhost": "/banking-staging",
+      "destination": "payment.queue",
+      "destination_type": "queue",
+      "routing_key": "transaction.failed",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events.dlx",
+      "vhost": "/banking-staging",
+      "destination": "audit.queue.dlq",
+      "destination_type": "queue",
+      "routing_key": "audit.queue.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events.dlx",
+      "vhost": "/banking-staging",
+      "destination": "notification.queue.dlq",
+      "destination_type": "queue",
+      "routing_key": "notification.queue.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events.dlx",
+      "vhost": "/banking-staging",
+      "destination": "account.queue.dlq",
+      "destination_type": "queue",
+      "routing_key": "account.queue.dlq",
+      "arguments": {}
+    },
+    {
+      "source": "banking.events.dlx",
+      "vhost": "/banking-staging",
+      "destination": "payment.queue.dlq",
+      "destination_type": "queue",
+      "routing_key": "payment.queue.dlq",
+      "arguments": {}
+    }
+  ],
+  "policies": [],
+  "parameters": []
+}
