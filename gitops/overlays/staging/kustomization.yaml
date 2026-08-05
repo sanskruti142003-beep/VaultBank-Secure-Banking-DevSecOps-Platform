@@ -42,3 +42,20 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Always
+
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: frontend
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: frontend
+      spec:
+        template:
+          spec:
+            containers:
+              - name: frontend
+                image: harbor.vaultbank.internal:9443/vault-bank/frontend@sha256:030f94a7764a4d2ba2afa98eab1d54a1b8637fe110901b3a19d499233527210f
