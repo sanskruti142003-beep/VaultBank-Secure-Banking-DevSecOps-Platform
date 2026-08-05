@@ -57,6 +57,8 @@ spec:
         app.kubernetes.io/part-of: vaultbank
     spec:
       terminationGracePeriodSeconds: 60
+      serviceAccountName: vault-bank-runtime
+      automountServiceAccountToken: false
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -67,6 +69,9 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - secretRef:
                 name: postgres-bootstrap-secrets
@@ -201,6 +206,8 @@ spec:
         app.kubernetes.io/part-of: vaultbank
     spec:
       terminationGracePeriodSeconds: 60
+      serviceAccountName: vault-bank-runtime
+      automountServiceAccountToken: false
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -219,6 +226,9 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - secretRef:
                 name: redis-auth
@@ -336,6 +346,8 @@ spec:
         app.kubernetes.io/part-of: vaultbank
     spec:
       terminationGracePeriodSeconds: 120
+      serviceAccountName: vault-bank-runtime
+      automountServiceAccountToken: false
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -349,6 +361,9 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - secretRef:
                 name: rabbitmq-bootstrap-secrets
