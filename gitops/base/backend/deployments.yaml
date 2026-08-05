@@ -36,11 +36,19 @@ spec:
               value: "3001"
             - name: SERVICE_NAME
               value: auth-service
+            - name: VAULT_ROLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: AUTH_SERVICE_VAULT_ROLE_ID
+            - name: VAULT_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: AUTH_SERVICE_VAULT_SECRET_ID
           envFrom:
             - configMapRef:
                 name: banking-runtime-config
-            - secretRef:
-                name: banking-runtime-secrets
           readinessProbe:
             httpGet:
               path: /v1/health
@@ -125,11 +133,19 @@ spec:
               value: "3002"
             - name: SERVICE_NAME
               value: account-service
+            - name: VAULT_ROLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: ACCOUNT_SERVICE_VAULT_ROLE_ID
+            - name: VAULT_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: ACCOUNT_SERVICE_VAULT_SECRET_ID
           envFrom:
             - configMapRef:
                 name: banking-runtime-config
-            - secretRef:
-                name: banking-runtime-secrets
           readinessProbe:
             httpGet:
               path: /v1/health
@@ -214,11 +230,19 @@ spec:
               value: "3003"
             - name: SERVICE_NAME
               value: transaction-service
+            - name: VAULT_ROLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: TRANSACTION_SERVICE_VAULT_ROLE_ID
+            - name: VAULT_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: TRANSACTION_SERVICE_VAULT_SECRET_ID
           envFrom:
             - configMapRef:
                 name: banking-runtime-config
-            - secretRef:
-                name: banking-runtime-secrets
           readinessProbe:
             httpGet:
               path: /v1/health
@@ -303,11 +327,19 @@ spec:
               value: "3004"
             - name: SERVICE_NAME
               value: payment-service
+            - name: VAULT_ROLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: PAYMENT_SERVICE_VAULT_ROLE_ID
+            - name: VAULT_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: PAYMENT_SERVICE_VAULT_SECRET_ID
           envFrom:
             - configMapRef:
                 name: banking-runtime-config
-            - secretRef:
-                name: banking-runtime-secrets
           readinessProbe:
             httpGet:
               path: /v1/health
@@ -394,11 +426,19 @@ spec:
               value: notification-service
             - name: HEALTH_DATABASE_ENABLED
               value: "false"
+            - name: VAULT_ROLE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: NOTIFICATION_SERVICE_VAULT_ROLE_ID
+            - name: VAULT_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: banking-runtime-secrets
+                  key: NOTIFICATION_SERVICE_VAULT_SECRET_ID
           envFrom:
             - configMapRef:
                 name: banking-runtime-config
-            - secretRef:
-                name: banking-runtime-secrets
           readinessProbe:
             httpGet:
               path: /v1/health
