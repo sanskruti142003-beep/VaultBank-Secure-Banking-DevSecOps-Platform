@@ -60,6 +60,11 @@ spec:
       serviceAccountName: vault-bank-runtime
       automountServiceAccountToken: false
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -117,6 +122,10 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+            - name: postgres-run
+              mountPath: /var/run/postgresql
+            - name: postgres-tmp
+              mountPath: /tmp
             - name: postgres-bootstrap
               mountPath: /docker-entrypoint-initdb.d/01-init.sh
               subPath: postgres-init.sh
@@ -126,6 +135,10 @@ spec:
               subPath: postgres-init.sql
               readOnly: true
       volumes:
+        - name: postgres-run
+          emptyDir: {}
+        - name: postgres-tmp
+          emptyDir: {}
         - name: postgres-bootstrap
           configMap:
             name: postgres-bootstrap
@@ -349,6 +362,11 @@ spec:
       serviceAccountName: vault-bank-runtime
       automountServiceAccountToken: false
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -404,6 +422,10 @@ spec:
           volumeMounts:
             - name: rabbitmq-data
               mountPath: /var/lib/rabbitmq
+            - name: rabbitmq-tmp
+              mountPath: /tmp
+            - name: rabbitmq-logs
+              mountPath: /var/log/rabbitmq
             - name: rabbitmq-config
               mountPath: /etc/rabbitmq/rabbitmq.conf
               subPath: rabbitmq.conf
@@ -417,6 +439,10 @@ spec:
               subPath: docker-entrypoint-custom.sh
               readOnly: true
       volumes:
+        - name: rabbitmq-tmp
+          emptyDir: {}
+        - name: rabbitmq-logs
+          emptyDir: {}
         - name: rabbitmq-config
           configMap:
             name: rabbitmq-config

@@ -34,3 +34,7 @@ images:
   - name: rabbitmq-runtime
     newName: harbor.vaultbank.internal:9443/vault-bank/rabbitmq-runtime
     digest: sha256:39f934e10a7b95179171a70f15f02636201a153a2c689e961fc0f445bac275f2
+
+patches:
+  - path: patches/postgres-runtime-fix.yaml
+  - path: patches/rabbitmq-runtime-fix.yaml
