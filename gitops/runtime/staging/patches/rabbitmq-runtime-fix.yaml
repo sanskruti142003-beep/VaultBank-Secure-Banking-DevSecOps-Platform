@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        fsGroup: 101
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rabbitmq
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: rabbitmq-tmp
+              mountPath: /tmp
+            - name: rabbitmq-logs
+              mountPath: /var/log/rabbitmq
+      volumes:
+        - name: rabbitmq-tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: rabbitmq-logs
+          emptyDir:
+            sizeLimit: 512Mi
