@@ -394,22 +394,24 @@ spec:
                 - rabbitmq-diagnostics
                 - -q
                 - ping
+            timeoutSeconds: 10
             periodSeconds: 10
             failureThreshold: 60
+            successThreshold: 1
           readinessProbe:
-            exec:
-              command:
-                - rabbitmq-diagnostics
-                - -q
-                - check_port_connectivity
+            tcpSocket:
+              port: 5672
+            timeoutSeconds: 3
             periodSeconds: 10
             failureThreshold: 6
+            successThreshold: 1
           livenessProbe:
             exec:
               command:
                 - rabbitmq-diagnostics
                 - -q
                 - ping
+            timeoutSeconds: 10
             periodSeconds: 30
             failureThreshold: 6
           resources:
