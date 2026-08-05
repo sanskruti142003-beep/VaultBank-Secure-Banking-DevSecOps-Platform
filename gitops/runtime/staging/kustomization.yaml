@@ -24,13 +24,13 @@ configMapGenerator:
 
 images:
   - name: postgres-runtime
-    newName: docker.io/library/postgres
-    digest: sha256:3d0f7584ed7d04e27fa050d6683a74746608faf21f202be78460d679cc56461f
+    newName: harbor.vaultbank.internal:9443/vault-bank/postgres-runtime
+    digest: sha256:2cd1d58a4f07c0895efcfe22826e63fdace4a093ae9174131b8b827b9a45749a
 
   - name: redis-runtime
-    newName: docker.io/library/redis
-    digest: sha256:cd218f4b106a332c5c992e38a9480bfb9d7e9f8f7b0ec9a0023bfa36d9a408f9
+    newName: harbor.vaultbank.internal:9443/vault-bank/redis-runtime
+    digest: sha256:58114ad49688e1bbfc1987829eae6be8446f5b608f0c9652af4a3a94833d551c
 
   - name: rabbitmq-runtime
-    newName: docker.io/library/rabbitmq
-    digest: sha256:09b39ca8a3e884e91cab8842cd41264de21aab0625e1f1d016a9a3135ba590ef
+    newName: harbor.vaultbank.internal:9443/vault-bank/rabbitmq-runtime
+    digest: sha256:39f934e10a7b95179171a70f15f02636201a153a2c689e961fc0f445bac275f2
