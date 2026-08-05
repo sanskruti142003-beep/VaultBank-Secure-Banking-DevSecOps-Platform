@@ -59,3 +59,12 @@ patches:
             containers:
               - name: frontend
                 image: harbor.vaultbank.internal:9443/vault-bank/frontend@sha256:030f94a7764a4d2ba2afa98eab1d54a1b8637fe110901b3a19d499233527210f
+
+  - target:
+      version: v1
+      kind: ConfigMap
+      name: banking-runtime-config
+    patch: |-
+      - op: replace
+        path: /data/DATABASE_SSL
+        value: "false"

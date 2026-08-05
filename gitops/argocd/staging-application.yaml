@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/part-of: vault-bank
     environment: staging
   annotations:
-    vault-bank.io/sync-state: paused-runtime-prerequisites
+    vault-bank.io/sync-state: enabled-phase5e-b4
 spec:
   project: vault-bank-staging
 
@@ -23,7 +23,7 @@ spec:
 
   syncPolicy:
     automated:
-      enabled: false
+      enabled: true
       prune: true
       selfHeal: true
     syncOptions:
