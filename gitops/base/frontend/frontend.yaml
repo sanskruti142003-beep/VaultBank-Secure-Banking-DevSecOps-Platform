@@ -53,6 +53,8 @@ spec:
               mountPath: /var/cache/nginx
             - name: nginx-tmp
               mountPath: /tmp
+            - name: nginx-run
+              mountPath: /var/run
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
@@ -65,6 +67,8 @@ spec:
         - name: nginx-cache
           emptyDir: {}
         - name: nginx-tmp
+          emptyDir: {}
+        - name: nginx-run
           emptyDir: {}
 ---
 apiVersion: v1
