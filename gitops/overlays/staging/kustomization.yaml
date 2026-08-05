@@ -27,7 +27,7 @@ images:
     digest: sha256:7469bd8960d283a0b4da496c3d0b670efbb24b6c7ec81336d16ac438d18802a1
   - name: frontend
     newName: harbor.vaultbank.internal:9443/vault-bank/frontend
-    digest: sha256:030f94a7764a4d2ba2afa98eab1d54a1b8637fe110901b3a19d499233527210f
+    digest: sha256:2193523731f9c93501b9d64a8eec35d430ed44bb6df5319b90e43d4aef192413
 
 patches:
   - target:
@@ -58,7 +58,7 @@ patches:
           spec:
             containers:
               - name: frontend
-                image: harbor.vaultbank.internal:9443/vault-bank/frontend@sha256:030f94a7764a4d2ba2afa98eab1d54a1b8637fe110901b3a19d499233527210f
+                image: harbor.vaultbank.internal:9443/vault-bank/frontend@sha256:2193523731f9c93501b9d64a8eec35d430ed44bb6df5319b90e43d4aef192413
 
   - target:
       version: v1
