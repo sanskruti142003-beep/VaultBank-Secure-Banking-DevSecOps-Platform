@@ -9,6 +9,10 @@ resources:
   - runtime-serviceaccount.yaml
   - resource-quota.yaml
 
+  - exposure/https-redirect-middleware.yaml
+  - exposure/frontend-http-ingress.yaml
+  - exposure/frontend-https-ingress.yaml
+  - exposure/frontend-networkpolicy.yaml
 images:
   - name: auth-service
     newName: harbor.vaultbank.internal:9443/vault-bank/auth-service
