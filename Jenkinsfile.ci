@@ -168,6 +168,8 @@ pipeline {
 
             export SONAR_USER_HOME=/var/lib/jenkins/.sonar
             export SONAR_QUALITY_GATE_TIMEOUT=300
+            export SONAR_GATE_NAME='Vault Bank POC Quality Gate'
+            export SONAR_SYNC_QUALITY_GATE=1
 
             bash ci/scripts/run-sonar.sh
           '''

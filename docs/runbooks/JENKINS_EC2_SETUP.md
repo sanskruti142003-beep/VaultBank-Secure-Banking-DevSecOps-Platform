@@ -10,6 +10,7 @@ That guide uses the required Jenkins credential IDs:
 
 ```text
 sonarqube-token
+sonarcloud-token
 nvd-api-key
 harbor-robot
 harbor-ca-cert
