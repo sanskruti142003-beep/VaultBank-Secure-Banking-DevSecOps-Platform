@@ -13,6 +13,11 @@ resources:
   - exposure/frontend-http-ingress.yaml
   - exposure/frontend-https-ingress.yaml
   - exposure/frontend-networkpolicy.yaml
+  - exposure/api-http-ingress.yaml
+  - exposure/api-https-ingress.yaml
+  - exposure/backend-networkpolicies.yaml
+  - migrations/database-migration-job.yaml
+  - migrations/zap-customer-seed-job.yaml
 images:
   - name: auth-service
     newName: harbor.vaultbank.internal:9443/vault-bank/auth-service
@@ -40,6 +45,10 @@ patches:
       kind: Deployment
       labelSelector: app.kubernetes.io/part-of=vaultbank
     patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "3"
       - op: replace
         path: /spec/template/spec/serviceAccountName
         value: vault-bank-runtime

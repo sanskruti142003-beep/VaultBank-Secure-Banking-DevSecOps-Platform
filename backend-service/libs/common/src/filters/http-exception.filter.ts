@@ -48,7 +48,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
   private parseResponse(
     source: string | object | undefined,
-    exception: unknown,
+    _exception: unknown,
   ): { code: string; message: string; details?: unknown } {
     if (typeof source === 'string') {
       return { code: 'HTTP_ERROR', message: source };
@@ -73,8 +73,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
     return {
       code: 'INTERNAL_SERVER_ERROR',
-      message:
-        exception instanceof Error ? exception.message : 'Unexpected error',
+      message: 'Unexpected infrastructure error',
     };
   }
 }

@@ -5,7 +5,8 @@ import {
   NestInterceptor,
 } from '@nestjs/common';
 import { EventBusService } from '@app/events';
-import { Observable, finalize } from 'rxjs';
+import { Response } from 'express';
+import { Observable } from 'rxjs';
 import { AuthenticatedRequest } from '../types/auth.types';
 import { CorrelationContext } from '../correlation/correlation.context';
 import { MetricsService } from '../metrics/metrics.service';
@@ -20,34 +21,34 @@ export class LoggingInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const startedAt = Date.now();
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const response = context
-      .switchToHttp()
-      .getResponse<{ statusCode: number }>();
-    return next.handle().pipe(
-      finalize(() => {
-        const durationMs = Date.now() - startedAt;
-        const path = sanitizePath(request.originalUrl || request.url);
-        const auditEvent = {
-          service: process.env.SERVICE_NAME ?? 'unknown-service',
-          method: request.method,
-          path,
-          statusCode: response.statusCode,
-          userId: request.user?.userId ?? null,
-          ip: request.ip ?? 'unknown',
-          durationMs,
-          timestamp: new Date().toISOString(),
-          correlationId: CorrelationContext.getId(),
-        };
-        this.metrics.recordHttpRequest({
-          durationMs,
-          method: request.method,
-          path,
-          statusCode: response.statusCode,
-        });
-        this.events.publish('audit.request', auditEvent);
-        writeAuditLine(auditEvent);
-      }),
-    );
+    const response = context.switchToHttp().getResponse<Response>();
+    const correlationId = CorrelationContext.getId();
+
+    response.once('finish', () => {
+      const durationMs = Date.now() - startedAt;
+      const path = sanitizePath(request.originalUrl || request.url);
+      const auditEvent = {
+        service: process.env.SERVICE_NAME ?? 'unknown-service',
+        method: request.method,
+        path,
+        statusCode: response.statusCode,
+        userId: request.user?.userId ?? null,
+        ip: request.ip ?? 'unknown',
+        durationMs,
+        timestamp: new Date().toISOString(),
+        correlationId,
+      };
+      this.metrics.recordHttpRequest({
+        durationMs,
+        method: request.method,
+        path,
+        statusCode: response.statusCode,
+      });
+      this.events.publish('audit.request', auditEvent);
+      writeAuditLine(auditEvent);
+    });
+
+    return next.handle();
   }
 }
 

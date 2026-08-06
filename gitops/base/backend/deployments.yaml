@@ -51,7 +51,7 @@ spec:
                 name: banking-runtime-config
           readinessProbe:
             httpGet:
-              path: /v1/health
+              path: /v1/ready
               port: http
             periodSeconds: 10
             failureThreshold: 6
@@ -148,7 +148,7 @@ spec:
                 name: banking-runtime-config
           readinessProbe:
             httpGet:
-              path: /v1/health
+              path: /v1/ready
               port: http
             periodSeconds: 10
             failureThreshold: 6
@@ -245,7 +245,7 @@ spec:
                 name: banking-runtime-config
           readinessProbe:
             httpGet:
-              path: /v1/health
+              path: /v1/ready
               port: http
             periodSeconds: 10
             failureThreshold: 6
@@ -342,7 +342,7 @@ spec:
                 name: banking-runtime-config
           readinessProbe:
             httpGet:
-              path: /v1/health
+              path: /v1/ready
               port: http
             periodSeconds: 10
             failureThreshold: 6
@@ -441,7 +441,7 @@ spec:
                 name: banking-runtime-config
           readinessProbe:
             httpGet:
-              path: /v1/health
+              path: /v1/ready
               port: http
             periodSeconds: 10
             failureThreshold: 6
