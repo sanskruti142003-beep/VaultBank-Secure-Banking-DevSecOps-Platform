@@ -49,9 +49,10 @@ Or run all four application migrations in dependency order:
 npm run migration:run:all
 ```
 
-Each CLI data source prefers its service-specific migration URL. Production
-migration jobs must use the dedicated migrator identity, never the runtime
-service role.
+Each CLI data source accepts either its service-specific migration URL or the
+dedicated migrator password plus `POSTGRES_HOST`/`POSTGRES_PORT`. It never falls
+back to the runtime `DB_URL`; production migration jobs must use the dedicated
+migrator identity, never the runtime service role.
 
 ## Layout
 

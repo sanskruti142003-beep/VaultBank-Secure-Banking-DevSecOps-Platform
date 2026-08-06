@@ -1,0 +1,199 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-bank-database-migration
+  labels:
+    app.kubernetes.io/name: database-migrator
+    app.kubernetes.io/part-of: vaultbank
+    app.kubernetes.io/component: database-migration
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: database-migrator
+        app.kubernetes.io/part-of: vaultbank
+        app.kubernetes.io/component: database-migration
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      serviceAccountName: vault-bank-runtime
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: auth-migration
+          image: auth-service
+          imagePullPolicy: Always
+          command:
+            - node
+            - ./node_modules/typeorm/cli.js
+            - -d
+            - dist/apps/auth-service/apps/auth-service/src/database/data-source.js
+            - migration:run
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+          envFrom:
+            - configMapRef:
+                name: banking-runtime-config
+            - secretRef:
+                name: banking-runtime-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 160Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        - name: account-migration
+          image: account-service
+          imagePullPolicy: Always
+          command:
+            - node
+            - ./node_modules/typeorm/cli.js
+            - -d
+            - dist/apps/account-service/apps/account-service/src/database/data-source.js
+            - migration:run
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+          envFrom:
+            - configMapRef:
+                name: banking-runtime-config
+            - secretRef:
+                name: banking-runtime-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 160Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        - name: transaction-migration
+          image: transaction-service
+          imagePullPolicy: Always
+          command:
+            - node
+            - ./node_modules/typeorm/cli.js
+            - -d
+            - dist/apps/transaction-service/apps/transaction-service/src/database/data-source.js
+            - migration:run
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+          envFrom:
+            - configMapRef:
+                name: banking-runtime-config
+            - secretRef:
+                name: banking-runtime-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 160Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        - name: payment-migration
+          image: payment-service
+          imagePullPolicy: Always
+          command:
+            - node
+            - ./node_modules/typeorm/cli.js
+            - -d
+            - dist/apps/payment-service/apps/payment-service/src/database/data-source.js
+            - migration:run
+          env:
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+          envFrom:
+            - configMapRef:
+                name: banking-runtime-config
+            - secretRef:
+                name: banking-runtime-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 160Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: migration-complete
+          image: auth-service
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -ec
+            - echo "PASS: database migrations completed"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

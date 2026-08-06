@@ -11,14 +11,14 @@ export function buildMigrationDatabaseUrl({
   passwordEnv,
   username,
 }: MigrationUrlOptions): string {
-  const explicit = process.env[explicitEnv] ?? process.env.DB_URL;
+  const explicit = process.env[explicitEnv];
   if (explicit) {
     return explicit;
   }
 
   const password = process.env[passwordEnv];
   if (!password) {
-    throw new Error(`${explicitEnv}, DB_URL, or ${passwordEnv} is required`);
+    throw new Error(`${explicitEnv} or ${passwordEnv} is required`);
   }
 
   const host = process.env.POSTGRES_HOST ?? '127.0.0.1';

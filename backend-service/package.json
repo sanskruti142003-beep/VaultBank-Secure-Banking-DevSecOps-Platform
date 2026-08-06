@@ -53,7 +53,8 @@
     "migration:run:account": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d apps/account-service/src/database/data-source.ts migration:run",
     "migration:run:transaction": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d apps/transaction-service/src/database/data-source.ts migration:run",
     "migration:run:payment": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js -d apps/payment-service/src/database/data-source.ts migration:run",
-    "migration:run:all": "npm run migration:run:user && npm run migration:run:account && npm run migration:run:transaction && npm run migration:run:payment"
+    "migration:run:all": "npm run migration:run:user && npm run migration:run:account && npm run migration:run:transaction && npm run migration:run:payment",
+    "seed:zap-user": "node -r ts-node/register -r tsconfig-paths/register apps/auth-service/src/database/seeds/seed-zap-customer.ts"
   },
   "dependencies": {
     "@golevelup/nestjs-rabbitmq": "9.0.2",
