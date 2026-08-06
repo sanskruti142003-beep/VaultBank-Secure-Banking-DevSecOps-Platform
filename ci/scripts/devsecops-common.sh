@@ -94,7 +94,38 @@ safe_name() {
 run_logged() {
   local name="$1"
   shift
+  local stdout_log="${REPORT_DIR}/${name}.log"
+  local stderr_log="${REPORT_DIR}/${name}.err.log"
+  local heartbeat_interval="${RUN_LOGGED_HEARTBEAT_INTERVAL:-60}"
+  local command_pid
+  local heartbeat_pid
+  local rc=0
+
   log "running ${name}"
-  "$@" > >(tee "${REPORT_DIR}/${name}.log") \
-    2> >(tee "${REPORT_DIR}/${name}.err.log" >&2)
+
+  "$@" > >(tee "${stdout_log}") 2> >(tee "${stderr_log}" >&2) &
+  command_pid=$!
+
+  (
+    set +e
+    elapsed=0
+    while kill -0 "${command_pid}" >/dev/null 2>&1; do
+      sleep "${heartbeat_interval}" || exit 0
+      if kill -0 "${command_pid}" >/dev/null 2>&1; then
+        elapsed=$((elapsed + heartbeat_interval))
+        log "still running ${name} (${elapsed}s elapsed)"
+      fi
+    done
+  ) &
+  heartbeat_pid=$!
+
+  if wait "${command_pid}"; then
+    rc=0
+  else
+    rc=$?
+  fi
+
+  kill "${heartbeat_pid}" >/dev/null 2>&1 || true
+  wait "${heartbeat_pid}" >/dev/null 2>&1 || true
+  return "${rc}"
 }
