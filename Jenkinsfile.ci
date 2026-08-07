@@ -501,7 +501,7 @@ pipeline {
       }
     }
 
-    stage('17 Verified release manifest') {
+    stage('17 Release Manifest') {
       when {
         branch 'main'
       }
@@ -1093,7 +1093,218 @@ PYTHON
       }
     }
 
-    stage('19 Verify staging for DAST') {
+    stage('19 Argo CD Deploy - Staging') {
+      when {
+        branch 'main'
+      }
+
+      options {
+        timeout(time: 6, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          REPORT_DIR="reports/phase-14-argocd-staging"
+          mkdir -p "${REPORT_DIR}"
+
+          APPLICATIONS="
+          vault-bank-staging
+          vault-bank-runtime-staging
+          "
+
+          for APP in ${APPLICATIONS}; do
+            echo "Hard-refreshing Argo CD application ${APP}" |
+              tee -a "${REPORT_DIR}/argocd-convergence.log"
+
+            kubectl \
+              --namespace argocd \
+              annotate \
+              application "${APP}" \
+              argocd.argoproj.io/refresh=hard \
+              --overwrite |
+              tee -a "${REPORT_DIR}/argocd-convergence.log"
+          done
+
+          DEADLINE=$((SECONDS + 300))
+
+          for APP in ${APPLICATIONS}; do
+            while true; do
+              SYNC_STATUS="$(
+                kubectl \
+                  --namespace argocd \
+                  get application "${APP}" \
+                  --output jsonpath='{.status.sync.status}' \
+                  2>/dev/null || true
+              )"
+
+              HEALTH_STATUS="$(
+                kubectl \
+                  --namespace argocd \
+                  get application "${APP}" \
+                  --output jsonpath='{.status.health.status}' \
+                  2>/dev/null || true
+              )"
+
+              printf '%s sync=%s health=%s\n' \
+                "${APP}" \
+                "${SYNC_STATUS:-Unknown}" \
+                "${HEALTH_STATUS:-Unknown}" |
+                tee -a "${REPORT_DIR}/argocd-convergence.log"
+
+              if [ "${SYNC_STATUS}" = "Synced" ] &&
+                 [ "${HEALTH_STATUS}" = "Healthy" ]; then
+                break
+              fi
+
+              if [ "${SECONDS}" -ge "${DEADLINE}" ]; then
+                kubectl \
+                  --namespace argocd \
+                  get application "${APP}" \
+                  --output yaml \
+                  > "${REPORT_DIR}/${APP}.yaml" || true
+
+                echo "FAIL: ${APP} did not converge to Synced/Healthy within 300 seconds"
+                exit 1
+              fi
+
+              sleep 10
+            done
+          done
+
+          echo 'PASS: Argo CD staging applications converged to Synced/Healthy' |
+            tee -a "${REPORT_DIR}/argocd-convergence.log"
+        '''
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-14-argocd-staging/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('20 Kubernetes Staging Verification') {
+      when {
+        branch 'main'
+      }
+
+      options {
+        timeout(time: 12, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          NAMESPACE='vault-bank-staging'
+          REPORT_DIR='reports/phase-15-kubernetes-staging'
+          mkdir -p "${REPORT_DIR}"
+
+          DEPLOYMENTS="
+          auth-service
+          account-service
+          transaction-service
+          payment-service
+          notification-service
+          frontend
+          "
+
+          for DEPLOYMENT in ${DEPLOYMENTS}; do
+            echo "Checking rollout for ${DEPLOYMENT}" |
+              tee -a "${REPORT_DIR}/rollout-status.log"
+
+            kubectl \
+              --namespace "${NAMESPACE}" \
+              rollout status \
+              "deployment/${DEPLOYMENT}" \
+              --timeout=180s |
+              tee -a "${REPORT_DIR}/rollout-status.log"
+
+            kubectl \
+              --namespace "${NAMESPACE}" \
+              get deployment "${DEPLOYMENT}" \
+              --output yaml \
+              > "${REPORT_DIR}/${DEPLOYMENT}.yaml"
+          done
+
+          kubectl \
+            --namespace "${NAMESPACE}" \
+            get pods \
+            --output json \
+            > "${REPORT_DIR}/pods.json"
+
+          python3 - <<'PYTHON'
+import json
+from pathlib import Path
+
+pods = json.loads(
+    Path("reports/phase-15-kubernetes-staging/pods.json")
+    .read_text(encoding="utf-8")
+).get("items", [])
+
+failures = []
+
+for pod in pods:
+    metadata = pod.get("metadata") or {}
+    status = pod.get("status") or {}
+    pod_name = metadata.get("name", "unknown")
+    phase = status.get("phase", "Unknown")
+
+    if phase not in {"Running", "Succeeded"}:
+        failures.append(
+            f"{pod_name} phase={phase}"
+        )
+
+    container_statuses = status.get("containerStatuses") or []
+
+    if phase == "Succeeded":
+        continue
+
+    if not container_statuses:
+        failures.append(
+            f"{pod_name} has no live container statuses"
+        )
+        continue
+
+    for container in container_statuses:
+        container_name = container.get("name", "unknown")
+
+        if container.get("ready") is not True:
+            failures.append(
+                f"{pod_name}/{container_name} is not Ready"
+            )
+
+if failures:
+    raise SystemExit(
+        "FAIL: unhealthy staging pods: "
+        + "; ".join(failures)
+    )
+
+print(
+    "PASS: all live staging Pod containers are Ready"
+)
+PYTHON
+        '''
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-15-kubernetes-staging/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
+    stage('21 Staging Smoke Test') {
       when {
         branch 'main'
       }
@@ -1103,12 +1314,21 @@ PYTHON
           set -Eeuo pipefail
 
           STAGING_HOST="${STAGING_HOST:-staging.vaultbank.internal}"
-          STAGING_NODE_IP="${STAGING_NODE_IP:-172.31.47.209}"
+          REPORT_DIR="${WORKSPACE}/reports/phase-11-zap"
+          mkdir -p "${REPORT_DIR}"
+
+          STAGING_NODE_IP="$(
+            kubectl \
+              get nodes \
+              --output jsonpath='{range .items[*]}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\\n"}{end}{end}' |
+              awk 'NF { print; exit }'
+          )"
 
           test -n "${STAGING_HOST}"
           test -n "${STAGING_NODE_IP}"
 
-          mkdir -p reports/phase-11-zap
+          printf 'STAGING_NODE_IP=%s\n' "${STAGING_NODE_IP}" \
+            > "${REPORT_DIR}/staging-node-ip.env"
 
           HTTP_STATUS="$(
             curl \
@@ -1122,18 +1342,21 @@ PYTHON
               "https://${STAGING_HOST}/"
           )"
 
-          printf 'StagingHTTP=%s\n' "${HTTP_STATUS}" |
-            tee reports/phase-11-zap/staging-preflight.log
+          {
+            printf 'StagingHost=%s\n' "${STAGING_HOST}"
+            printf 'StagingNodeInternalIP=%s\n' "${STAGING_NODE_IP}"
+            printf 'StagingHTTP=%s\n' "${HTTP_STATUS}"
+          } | tee "${REPORT_DIR}/staging-smoke.log"
 
           test "${HTTP_STATUS}" = '200'
 
-          echo 'PASS: staging reachable for OWASP ZAP' |
-            tee -a reports/phase-11-zap/staging-preflight.log
+          echo 'ReadyForZap=true' |
+            tee -a "${REPORT_DIR}/staging-smoke.log"
         '''
       }
     }
 
-    stage('20 OWASP ZAP baseline DAST') {
+    stage('22 OWASP ZAP Baseline DAST') {
       when {
         branch 'main'
       }
@@ -1143,9 +1366,25 @@ PYTHON
           set -Eeuo pipefail
 
           STAGING_HOST="${STAGING_HOST:-staging.vaultbank.internal}"
-          STAGING_NODE_IP="${STAGING_NODE_IP:-172.31.47.209}"
           REPORT_DIR="${WORKSPACE}/reports/phase-11-zap"
           mkdir -p "${REPORT_DIR}"
+
+          if [ -f "${REPORT_DIR}/staging-node-ip.env" ]; then
+            # shellcheck disable=SC1091
+            source "${REPORT_DIR}/staging-node-ip.env"
+          fi
+
+          if [ -z "${STAGING_NODE_IP:-}" ]; then
+            STAGING_NODE_IP="$(
+              kubectl \
+                get nodes \
+                --output jsonpath='{range .items[*]}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\\n"}{end}{end}' |
+                awk 'NF { print; exit }'
+            )"
+          fi
+
+          test -n "${STAGING_HOST}"
+          test -n "${STAGING_NODE_IP}"
 
           ZAP_IMAGE='ghcr.io/zaproxy/zaproxy@sha256:35ea10525f93cfdbf81fd2b8de624f974f7559351f664415156815b49e7e0b66'
 
@@ -1160,6 +1399,8 @@ PYTHON
 
           docker run \
             --rm \
+            --user "$(id -u):$(id -g)" \
+            --env HOME=/tmp \
             --add-host "${STAGING_HOST}:${STAGING_NODE_IP}" \
             --volume "${REPORT_DIR}:/zap/wrk:rw" \
             "${ZAP_IMAGE}" \
@@ -1205,6 +1446,25 @@ PYTHON
 
           echo 'OwaspZapImplemented=true'
         '''
+      }
+    }
+
+    stage('23 Publish ZAP Report') {
+      when {
+        branch 'main'
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          test -s reports/phase-11-zap/zap-baseline.html
+          test -s reports/phase-11-zap/zap-baseline.json
+          test -s reports/phase-11-zap/zap-baseline.md
+          test -s reports/phase-11-zap/zap-console.log
+          test -s reports/phase-11-zap/zap-exit.txt
+        '''
+
         publishHTML([
           allowMissing: false,
           alwaysLinkToLastBuild: true,
