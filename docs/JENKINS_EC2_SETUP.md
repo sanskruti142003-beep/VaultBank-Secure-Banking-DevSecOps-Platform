@@ -23,7 +23,7 @@ Create these exact Jenkins credential IDs:
 
 | Credential ID | Type | Use |
 | --- | --- | --- |
-| `sonarcloud-token` | Secret text | `Jenkinsfile.ci` SonarCloud analysis and project quality-gate sync |
+| `sonarcloud-token` | Secret text | `Jenkinsfile.ci` SonarCloud analysis and effective quality policy check |
 | `sonarqube-token` | Secret text | Legacy `Jenkinsfile` SonarCloud/SonarQube analysis and project quality-gate sync |
 | `nvd-api-key` | Secret text | OWASP Dependency-Check NVD updates |
 | `harbor-robot` | Username/password | Harbor robot account |
@@ -31,10 +31,11 @@ Create these exact Jenkins credential IDs:
 
 Cosign is configured for AWS KMS by default:
 
-For the Free Tier POC SonarCloud gate, the Sonar token must be able to administer
-the project quality gate. Jenkins syncs `Vault Bank POC Quality Gate` from
-`config/pipeline-policy.yml` before running analysis, including the 50 percent
-new-code coverage threshold.
+For the Free Tier POC SonarCloud gate, `Jenkinsfile.ci` does not require the
+token to administer or attach a server-side quality gate. Jenkins runs the
+analysis, waits for the Sonar Compute Engine task, reads the returned quality
+gate conditions, and applies the effective policy from `config/pipeline-policy.yml`,
+including the 50 percent new-code coverage threshold.
 
 ```text
 awskms:///alias/vaultbank-cosign
