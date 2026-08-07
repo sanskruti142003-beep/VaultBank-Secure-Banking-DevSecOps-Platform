@@ -794,7 +794,8 @@ PYTHON
 
           STAGING_HOST="${STAGING_HOST:-staging.vaultbank.internal}"
           REPORT_DIR="${WORKSPACE}/reports/phase-11-zap"
-          mkdir -p "${REPORT_DIR}"
+          ZAP_TMP_DIR="${REPORT_DIR}/tmp"
+          mkdir -p "${REPORT_DIR}" "${ZAP_TMP_DIR}"
 
           STAGING_NODE_IP="$(
             kubectl \
@@ -880,8 +881,11 @@ PYTHON
             --rm \
             --user "$(id -u):$(id -g)" \
             --env HOME=/tmp \
+            --env TMPDIR=/tmp \
             --add-host "${STAGING_HOST}:${STAGING_NODE_IP}" \
             --volume "${REPORT_DIR}:/zap/wrk:rw" \
+            --volume "${ZAP_TMP_DIR}:/tmp:rw" \
+            --workdir /zap/wrk \
             "${ZAP_IMAGE}" \
             zap-baseline.py \
             -t "https://${STAGING_HOST}" \
