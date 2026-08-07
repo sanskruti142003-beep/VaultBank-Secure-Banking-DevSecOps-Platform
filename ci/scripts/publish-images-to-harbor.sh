@@ -18,6 +18,8 @@ HARBOR_PUBLICATION_MANIFEST="${REPORT_DIR}/harbor-publication-manifest.json"
 
 HARBOR_PUBLICATION_JSONL="${REPORT_DIR}/harbor-publication-manifest.jsonl"
 
+HARBOR_AUTO_SBOM_JSONL="${REPORT_DIR}/harbor-auto-sbom.jsonl"
+
 REGISTRY_IMAGES_FILE="${REPORT_DIR}/registry-images.txt"
 
 REGISTRY_DIGESTS_FILE="${REPORT_DIR}/registry-digests.txt"
@@ -27,6 +29,18 @@ PUBLICATION_SUMMARY="${REPORT_DIR}/harbor-publication-summary.json"
 PUBLICATION_SUMMARY_TEXT="${REPORT_DIR}/harbor-publication-summary.txt"
 
 CHECKSUM_FILE="${REPORT_DIR}/harbor-publication-checksums.sha256"
+
+HARBOR_AUTO_SBOM_REQUIRED="${HARBOR_AUTO_SBOM_REQUIRED:-1}"
+
+HARBOR_AUTO_SBOM_TIMEOUT_SECONDS="${HARBOR_AUTO_SBOM_TIMEOUT_SECONDS:-900}"
+
+HARBOR_AUTO_SBOM_POLL_SECONDS="${HARBOR_AUTO_SBOM_POLL_SECONDS:-15}"
+
+HARBOR_SCHEME="${HARBOR_SCHEME:-https}"
+
+HARBOR_TLS_VERIFY="${HARBOR_TLS_VERIFY:-1}"
+
+REGISTRY_CA="${REGISTRY_CA:-/usr/local/share/ca-certificates/vaultbank-harbor-ca.crt}"
 
 require_command docker
 require_command python3
@@ -49,6 +63,41 @@ require_command sed
 
 [ -n "${HARBOR_PASSWORD:-}" ] ||
   die "HARBOR_PASSWORD is required"
+
+case "${HARBOR_AUTO_SBOM_REQUIRED}" in
+  0 | 1)
+    ;;
+  *)
+    die "HARBOR_AUTO_SBOM_REQUIRED must be 0 or 1"
+    ;;
+esac
+
+if [ "${HARBOR_AUTO_SBOM_REQUIRED}" = "1" ]; then
+  require_command curl
+
+  case "${HARBOR_AUTO_SBOM_TIMEOUT_SECONDS}" in
+    *[!0-9]* | "")
+      die "HARBOR_AUTO_SBOM_TIMEOUT_SECONDS must be a positive integer"
+      ;;
+  esac
+
+  case "${HARBOR_AUTO_SBOM_POLL_SECONDS}" in
+    *[!0-9]* | "")
+      die "HARBOR_AUTO_SBOM_POLL_SECONDS must be a positive integer"
+      ;;
+  esac
+
+  [ "${HARBOR_AUTO_SBOM_TIMEOUT_SECONDS}" -gt 0 ] ||
+    die "HARBOR_AUTO_SBOM_TIMEOUT_SECONDS must be greater than zero"
+
+  [ "${HARBOR_AUTO_SBOM_POLL_SECONDS}" -gt 0 ] ||
+    die "HARBOR_AUTO_SBOM_POLL_SECONDS must be greater than zero"
+
+  if [ "${HARBOR_TLS_VERIFY}" = "1" ]; then
+    [ -r "${REGISTRY_CA}" ] ||
+      die "Harbor CA is not readable: ${REGISTRY_CA}"
+  fi
+fi
 
 case "${HARBOR_REGISTRY}" in
   http://* | https://* | */*)
@@ -87,6 +136,7 @@ rm -rf "${REPORT_DIR}"
 mkdir -p "${REPORT_DIR}"
 
 : > "${HARBOR_PUBLICATION_JSONL}"
+: > "${HARBOR_AUTO_SBOM_JSONL}"
 : > "${REGISTRY_IMAGES_FILE}"
 : > "${REGISTRY_DIGESTS_FILE}"
 
@@ -188,6 +238,8 @@ DOCKER_CONFIG_DIR="$(
   mktemp -d /tmp/vaultbank-harbor-docker.XXXXXX
 )"
 
+HARBOR_NETRC_FILE=""
+
 chmod 700 "${DOCKER_CONFIG_DIR}"
 export DOCKER_CONFIG="${DOCKER_CONFIG_DIR}"
 
@@ -198,10 +250,288 @@ cleanup() {
 
   rm -rf "${DOCKER_CONFIG_DIR}"
 
+  if [ -n "${HARBOR_NETRC_FILE}" ]; then
+    rm -f "${HARBOR_NETRC_FILE}"
+  fi
+
   unset HARBOR_PASSWORD
 }
 
 trap cleanup EXIT
+
+url_encode() {
+  python3 -c \
+    'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' \
+    "$1"
+}
+
+harbor_api_url() {
+  local path="$1"
+  printf '%s://%s/api/v2.0/%s\n' \
+    "${HARBOR_SCHEME}" \
+    "${HARBOR_REGISTRY}" \
+    "${path}"
+}
+
+harbor_curl_args() {
+  if [ "${HARBOR_TLS_VERIFY}" = "1" ]; then
+    printf '%s\0%s\0' --cacert "${REGISTRY_CA}"
+  else
+    printf '%s\0' --insecure
+  fi
+}
+
+harbor_api_get() {
+  local output_file="$1"
+  local url="$2"
+  shift 2
+
+  local -a tls_args=()
+  mapfile -d '' -t tls_args < <(harbor_curl_args)
+
+  curl \
+    --fail \
+    --silent \
+    --show-error \
+    "${tls_args[@]}" \
+    --netrc-file "${HARBOR_NETRC_FILE}" \
+    --get \
+    "${url}" \
+    "$@" \
+    --output "${output_file}"
+}
+
+harbor_api_put_json() {
+  local output_file="$1"
+  local url="$2"
+  local payload="$3"
+
+  local -a tls_args=()
+  mapfile -d '' -t tls_args < <(harbor_curl_args)
+
+  curl \
+    --fail \
+    --silent \
+    --show-error \
+    "${tls_args[@]}" \
+    --netrc-file "${HARBOR_NETRC_FILE}" \
+    --request PUT \
+    --header 'Content-Type: application/json' \
+    --data "${payload}" \
+    "${url}" \
+    --output "${output_file}"
+}
+
+setup_harbor_api_credentials() {
+  if [ "${HARBOR_AUTO_SBOM_REQUIRED}" != "1" ]; then
+    return 0
+  fi
+
+  HARBOR_NETRC_FILE="$(
+    mktemp /tmp/vaultbank-harbor-netrc.XXXXXX
+  )"
+
+  chmod 600 "${HARBOR_NETRC_FILE}"
+
+  printf 'machine %s login %s password %s\n' \
+    "${HARBOR_REGISTRY%%:*}" \
+    "${HARBOR_USERNAME}" \
+    "${HARBOR_PASSWORD}" \
+    > "${HARBOR_NETRC_FILE}"
+}
+
+ensure_harbor_auto_sbom_enabled() {
+  if [ "${HARBOR_AUTO_SBOM_REQUIRED}" != "1" ]; then
+    log "Harbor automatic SBOM gate is disabled"
+    return 0
+  fi
+
+  local project_encoded
+  local metadata_url
+  local project_url
+  local metadata_file
+  local update_file
+
+  project_encoded="$(url_encode "${HARBOR_PROJECT}")"
+  metadata_url="$(
+    harbor_api_url "projects/${project_encoded}/metadatas/"
+  )"
+  project_url="$(
+    harbor_api_url "projects/${project_encoded}"
+  )"
+  metadata_file="${REPORT_DIR}/harbor-project-metadata.json"
+  update_file="${REPORT_DIR}/harbor-project-auto-sbom-update.json"
+
+  log "Ensuring Harbor automatic SBOM generation is enabled"
+
+  harbor_api_get \
+    "${metadata_file}" \
+    "${metadata_url}" ||
+    die "Unable to read Harbor project metadata. Grant the Harbor credential Read Project Metadata."
+
+  if python3 - "${metadata_file}" <<'PY'
+import json
+import sys
+
+metadata = json.loads(open(sys.argv[1], encoding="utf-8").read())
+value = str(metadata.get("auto_sbom_generation", "")).lower()
+raise SystemExit(0 if value == "true" else 1)
+PY
+  then
+    log "PASS: Harbor automatic SBOM generation is already enabled"
+    return 0
+  fi
+
+  log "Enabling Harbor automatic SBOM generation for ${HARBOR_PROJECT}"
+
+  harbor_api_put_json \
+    "${update_file}" \
+    "${project_url}" \
+    '{"metadata":{"auto_sbom_generation":"true"}}' ||
+    die "Unable to enable Harbor automatic SBOM generation. Grant the Harbor credential Update Project Metadata, or enable Project > Configuration > SBOM generation in Harbor."
+
+  harbor_api_get \
+    "${metadata_file}" \
+    "${metadata_url}" ||
+    die "Unable to verify Harbor project metadata after enabling SBOM generation"
+
+  python3 - "${metadata_file}" <<'PY'
+import json
+import sys
+
+metadata = json.loads(open(sys.argv[1], encoding="utf-8").read())
+value = str(metadata.get("auto_sbom_generation", "")).lower()
+if value != "true":
+    raise SystemExit("FAIL: Harbor auto_sbom_generation is not true after update")
+PY
+
+  log "PASS: Harbor automatic SBOM generation is enabled"
+}
+
+wait_for_harbor_auto_sbom() {
+  local service="$1"
+  local digest="$2"
+
+  if [ "${HARBOR_AUTO_SBOM_REQUIRED}" != "1" ]; then
+    return 0
+  fi
+
+  local project_encoded
+  local repository_encoded
+  local digest_encoded
+  local artifact_url
+  local artifact_file
+  local service_result
+  local deadline
+  local now
+  local parse_output
+  local parse_rc
+
+  project_encoded="$(url_encode "${HARBOR_PROJECT}")"
+  repository_encoded="$(url_encode "${service}")"
+  digest_encoded="$(url_encode "${digest}")"
+  artifact_url="$(
+    harbor_api_url \
+      "projects/${project_encoded}/repositories/${repository_encoded}/artifacts/${digest_encoded}"
+  )"
+  artifact_file="${REPORT_DIR}/harbor-auto-sbom-${service}.json"
+  service_result="${REPORT_DIR}/harbor-auto-sbom-result-${service}.json"
+  deadline=$((SECONDS + HARBOR_AUTO_SBOM_TIMEOUT_SECONDS))
+
+  log "Waiting for Harbor automatic SBOM for ${service}@${digest}"
+
+  while true; do
+    harbor_api_get \
+      "${artifact_file}" \
+      "${artifact_url}" \
+      --data-urlencode 'with_sbom_overview=true' \
+      --data-urlencode 'with_accessory=true' ||
+      die "Unable to read Harbor artifact ${service}@${digest}"
+
+    set +e
+    parse_output="$(
+      python3 - \
+        "${artifact_file}" \
+        "${service_result}" \
+        "${service}" \
+        "${digest}" \
+        "${HARBOR_AUTO_SBOM_JSONL}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+artifact_path = Path(sys.argv[1])
+result_path = Path(sys.argv[2])
+service = sys.argv[3]
+digest = sys.argv[4]
+jsonl_path = Path(sys.argv[5])
+
+artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+overview = artifact.get("sbom_overview") or {}
+status = str(overview.get("scan_status") or "").strip()
+status_lower = status.lower()
+sbom_digest = str(overview.get("sbom_digest") or "")
+report_id = str(overview.get("report_id") or "")
+
+result = {
+    "service": service,
+    "digest": digest,
+    "scan_status": status,
+    "sbom_digest": sbom_digest,
+    "report_id": report_id,
+}
+
+if status_lower == "success" and sbom_digest and report_id:
+    result["validation_passed"] = True
+    result_path.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with jsonl_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(result, sort_keys=True) + "\n")
+    print(f"success {sbom_digest} {report_id}")
+    raise SystemExit(0)
+
+if status_lower in {"error", "failed", "failure", "stopped", "stop"}:
+    result["validation_passed"] = False
+    result_path.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(f"failed {status or 'empty'}")
+    raise SystemExit(2)
+
+print(f"pending {status or 'empty'}")
+raise SystemExit(1)
+PY
+    )"
+    parse_rc=$?
+    set -e
+
+    case "${parse_rc}" in
+      0)
+        log "PASS: Harbor automatic SBOM ready for ${service}: ${parse_output}"
+        return 0
+        ;;
+      2)
+        die "Harbor automatic SBOM failed for ${service}: ${parse_output}"
+        ;;
+    esac
+
+    now="${SECONDS}"
+
+    if [ "${now}" -ge "${deadline}" ]; then
+      die "Timed out waiting for Harbor automatic SBOM for ${service}: ${parse_output}"
+    fi
+
+    log "Harbor automatic SBOM pending for ${service}: ${parse_output}"
+    sleep "${HARBOR_AUTO_SBOM_POLL_SECONDS}"
+  done
+}
+
+setup_harbor_api_credentials
+
+ensure_harbor_auto_sbom_enabled
 
 log "Authenticating to Harbor using temporary Docker credentials"
 
@@ -312,6 +642,10 @@ while IFS=$'\t' read -r service local_image; do
     "${REPORT_DIR}/registry-manifest-${service}.json" \
     >/dev/null
 
+  wait_for_harbor_auto_sbom \
+    "${service}" \
+    "${DIGEST}"
+
   printf '%s\n' \
     "${REGISTRY_IMAGE}" \
     >> "${REGISTRY_IMAGES_FILE}"
@@ -386,13 +720,15 @@ done < "${INPUT_TSV}"
 
 export \
   HARBOR_PUBLICATION_JSONL \
+  HARBOR_AUTO_SBOM_JSONL \
   HARBOR_PUBLICATION_MANIFEST \
   PUBLICATION_SUMMARY \
   PUBLICATION_SUMMARY_TEXT \
   HARBOR_REGISTRY \
   HARBOR_PROJECT \
   REGISTRY_TAG \
-  SOURCE_COMMIT
+  SOURCE_COMMIT \
+  HARBOR_AUTO_SBOM_REQUIRED
 
 python3 - <<'PY'
 import json
@@ -410,6 +746,25 @@ rows = [
     ).splitlines()
     if line.strip()
 ]
+
+auto_sbom_required = os.environ.get(
+    "HARBOR_AUTO_SBOM_REQUIRED",
+    "1",
+) == "1"
+
+sbom_rows = []
+sbom_path = Path(
+    os.environ["HARBOR_AUTO_SBOM_JSONL"]
+)
+
+if sbom_path.exists():
+    sbom_rows = [
+        json.loads(line)
+        for line in sbom_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line.strip()
+    ]
 
 if len(rows) != 6:
     raise SystemExit(
@@ -434,6 +789,40 @@ for row in rows:
             f"FAIL: invalid digest for {row['service']}"
         )
 
+if auto_sbom_required:
+    if len(sbom_rows) != 6:
+        raise SystemExit(
+            f"FAIL: expected 6 Harbor automatic SBOM results, found {len(sbom_rows)}"
+        )
+
+    sbom_services = {
+        row.get("service")
+        for row in sbom_rows
+    }
+
+    if sbom_services != services:
+        raise SystemExit(
+            "FAIL: Harbor automatic SBOM service set does not match published services"
+        )
+
+    for row in sbom_rows:
+        if row.get("validation_passed") is not True:
+            raise SystemExit(
+                f"FAIL: Harbor automatic SBOM was not validated for {row.get('service')}"
+            )
+        if str(row.get("scan_status", "")).lower() != "success":
+            raise SystemExit(
+                f"FAIL: Harbor automatic SBOM status is not Success for {row.get('service')}"
+            )
+        if not str(row.get("sbom_digest", "")).startswith("sha256:"):
+            raise SystemExit(
+                f"FAIL: Harbor automatic SBOM digest is invalid for {row.get('service')}"
+            )
+        if not str(row.get("report_id", "")):
+            raise SystemExit(
+                f"FAIL: Harbor automatic SBOM report id is missing for {row.get('service')}"
+            )
+
 manifest = {
     "registry": os.environ["HARBOR_REGISTRY"],
     "project": os.environ["HARBOR_PROJECT"],
@@ -441,6 +830,8 @@ manifest = {
     "source_commit": os.environ["SOURCE_COMMIT"],
     "images_pushed": len(rows),
     "images": rows,
+    "harbor_auto_sbom_required": auto_sbom_required,
+    "harbor_auto_sboms": sbom_rows,
     "validation_passed": True,
 }
 
@@ -463,6 +854,8 @@ summary = {
     "source_commit": manifest["source_commit"],
     "images_pushed": 6,
     "digests_captured": 6,
+    "harbor_auto_sboms": len(sbom_rows),
+    "harbor_auto_sbom_required": auto_sbom_required,
     "immutable_tag_pattern": "sha-*",
     "validation_passed": True,
 }
@@ -486,6 +879,8 @@ summary_lines = [
     f"Source commit: {summary['source_commit']}",
     "Images pushed: 6",
     "Digests captured: 6",
+    f"Harbor automatic SBOM required: {str(auto_sbom_required).lower()}",
+    f"Harbor automatic SBOMs: {len(sbom_rows)}",
     "Immutable tag pattern: sha-*",
     "Validation passed: true",
 ]

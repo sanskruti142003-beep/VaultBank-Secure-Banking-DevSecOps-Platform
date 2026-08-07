@@ -375,6 +375,9 @@ pipeline {
 
             export HARBOR_REGISTRY='harbor.vaultbank.internal:9443'
             export HARBOR_PROJECT='vault-bank'
+            export HARBOR_AUTO_SBOM_REQUIRED=1
+            export HARBOR_AUTO_SBOM_TIMEOUT_SECONDS=900
+            export HARBOR_AUTO_SBOM_POLL_SECONDS=15
 
             bash ci/scripts/publish-images-to-harbor.sh
           '''

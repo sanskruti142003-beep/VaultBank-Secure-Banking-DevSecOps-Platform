@@ -15,7 +15,7 @@ The first ten phases end at signed Harbor image digests. Argo CD, Kubernetes/k3s
 | 7 | Six deterministic image builds | `ci/scripts/build-images.sh`, `backend-service/Dockerfile`, `frontend/Dockerfile` |
 | 8 | Trivy image scans | `ci/scripts/scan-images.sh` |
 | 9 | Syft SBOM generation | `ci/scripts/generate-sboms.sh` |
-| 10 | Harbor publish/sign/attest/verify | `ci/scripts/publish-harbor.sh`, `ci/scripts/write-release-manifest.py` |
+| 10 | Harbor publish/sign/attest/verify | `ci/scripts/publish-images-to-harbor.sh`, `ci/scripts/sign-attest-harbor-images.sh`, `ci/scripts/write-release-manifest.py` |
 
 ## Required Reports
 
@@ -85,5 +85,5 @@ The manual security commands require the same tokens, Harbor credentials, and Co
 
 - A failed secret gate requires immediate revoke/rotate before rerun.
 - A failed dependency or Trivy gate requires dependency upgrade, base image update, or an approved expiring exception.
-- A failed Harbor push/sign/attest gate means the digest is not releasable.
+- A failed Harbor push, automatic SBOM, sign, or attest gate means the digest is not releasable.
 - Never promote by mutable tags. Use only digests from `reports/phase-10-harbor/release-manifest.json`.
