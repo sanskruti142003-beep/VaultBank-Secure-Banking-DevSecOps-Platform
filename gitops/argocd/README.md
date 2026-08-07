@@ -15,14 +15,18 @@ kubectl apply -f gitops/argocd/prod-application.yaml
 
 Apply the staging bootstrap whenever the EC2 instance is rebuilt or restarted
 after a long stop. The bootstrap reapplies the Argo CD AppProjects before the
-Applications, which keeps PreSync resources such as database migration Jobs
-permitted by the restricted `vault-bank-staging` project.
-The staging application intentionally does not use `ApplyOutOfSyncOnly=true`
-because selective sync skips hook execution, and the staging overlay depends on
-PreSync migration and ZAP seed Jobs.
+Applications and verifies the staging overlay renders without demo-blocking
+PreSync migration or ZAP seed Jobs.
 
 ```bash
 bash ci/scripts/reconcile-argocd-staging.sh
+```
+
+To test an unmerged repair branch, push the branch first and pass it as the
+temporary Argo CD target revision:
+
+```bash
+ARGOCD_TARGET_REVISION=fix/demo-argocd-sync bash ci/scripts/reconcile-argocd-staging.sh
 ```
 
 POC note: Running Argo CD, Vault, RabbitMQ, monitoring, and all services on one

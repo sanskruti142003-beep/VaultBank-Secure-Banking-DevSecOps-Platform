@@ -8,6 +8,7 @@ source "${SCRIPT_DIR}/devsecops-common.sh"
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
 STAGING_APP="${STAGING_APP:-vault-bank-staging}"
 RUNTIME_APP="${RUNTIME_APP:-vault-bank-runtime-staging}"
+TARGET_REVISION="${ARGOCD_TARGET_REVISION:-main}"
 WAIT_TIMEOUT_SECONDS="${ARGOCD_WAIT_TIMEOUT_SECONDS:-300}"
 POLL_SECONDS="${ARGOCD_POLL_SECONDS:-10}"
 
@@ -15,6 +16,10 @@ require_command kubectl
 require_command grep
 require_command sed
 require_command tail
+
+STAGING_RENDERED_MANIFEST="$(
+  mktemp /tmp/vault-bank-staging-rendered.XXXXXX.yaml
+)"
 
 case "${WAIT_TIMEOUT_SECONDS}" in
   "" | *[!0-9]*)
@@ -37,12 +42,30 @@ esac
 log "Applying Argo CD staging projects and applications"
 kubectl apply -k "${ROOT_DIR}/gitops/argocd"
 
-log "Verifying Argo CD project permits staging PreSync Jobs"
-kubectl get appproject vault-bank-staging \
-  --namespace "${ARGOCD_NAMESPACE}" \
-  -o jsonpath='{range .spec.namespaceResourceWhitelist[*]}{.group}/{.kind}{"\n"}{end}' |
-grep -qx 'batch/Job' ||
-  die "AppProject vault-bank-staging does not permit batch/Job"
+if [ "${TARGET_REVISION}" != "main" ]; then
+  log "Temporarily setting Argo CD staging target revision to ${TARGET_REVISION}"
+  for app in "${RUNTIME_APP}" "${STAGING_APP}"; do
+    kubectl patch application "${app}" \
+      --namespace "${ARGOCD_NAMESPACE}" \
+      --type merge \
+      --patch "{\"spec\":{\"source\":{\"targetRevision\":\"${TARGET_REVISION}\"}}}" \
+      >/dev/null
+  done
+fi
+
+log "Verifying staging overlay renders without PreSync migration or ZAP seed hooks"
+kubectl kustomize "${ROOT_DIR}/gitops/overlays/staging" \
+  > "${STAGING_RENDERED_MANIFEST}"
+
+[ -s "${STAGING_RENDERED_MANIFEST}" ] ||
+  die "Rendered staging manifest is empty"
+
+if grep -Eq \
+  '(^kind: Job$|argocd\.argoproj\.io/hook|vault-bank-database-migration|vault-bank-zap-customer-seed|banking-migrator-secrets|zap-staging-customer)' \
+  "${STAGING_RENDERED_MANIFEST}"; then
+
+  die "Rendered staging manifest still contains a PreSync migration/ZAP seed dependency"
+fi
 
 log "Requesting hard refresh for ${RUNTIME_APP} and ${STAGING_APP}"
 refresh_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -67,7 +90,7 @@ request_kubectl_sync() {
       "username": "ec2-reconcile-script"
     },
     "sync": {
-      "revision": "main",
+      "revision": "${TARGET_REVISION}",
       "prune": true,
       "syncOptions": [
         "CreateNamespace=false",
