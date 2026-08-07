@@ -429,6 +429,8 @@ wait_for_harbor_auto_sbom() {
   local digest="$2"
 
   if [ "${HARBOR_AUTO_SBOM_REQUIRED}" != "1" ]; then
+    log "Skipping Harbor API SBOM polling because HARBOR_AUTO_SBOM_REQUIRED=${HARBOR_AUTO_SBOM_REQUIRED}"
+    log "Pipeline SBOM evidence is enforced by Syft generation and Cosign SPDX attestation stages"
     return 0
   fi
 
