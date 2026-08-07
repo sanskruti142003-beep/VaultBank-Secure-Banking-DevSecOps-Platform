@@ -1,0 +1,14 @@
+title = "Vault Bank Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "curl-auth-user"
+
+  [[rules.allowlists]]
+  description = "SONAR_TOKEN is a Jenkins runtime variable, not a checked-in curl credential."
+  condition = "AND"
+  regexTarget = "match"
+  paths = ['''ci/scripts/configure-sonar-quality-gate\.sh''']
+  regexes = ['''--u[s]er[[:space:]]+"\$\{SONAR_TOKEN\}:"''']

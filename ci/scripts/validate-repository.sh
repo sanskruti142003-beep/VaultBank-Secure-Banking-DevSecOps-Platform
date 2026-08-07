@@ -94,6 +94,7 @@ require_file 'ci/scripts/validate-security-exceptions.py' 'security exception va
 require_file 'ci/scripts/validate-all-files.sh' 'repository-wide file hygiene validator'
 require_file 'ci/scripts/jenkins-preflight.sh' 'Jenkins preflight script'
 require_file 'ci/scripts/run-trufflehog.sh' 'TruffleHog scan script'
+require_file 'ci/scripts/configure-sonar-quality-gate.sh' 'SonarQube quality gate sync script'
 require_file 'ci/scripts/run-sonar.sh' 'SonarQube scan script'
 require_file 'ci/scripts/run-dependency-check.sh' 'Dependency-Check scan script'
 require_file 'ci/scripts/run-trivy-fs.sh' 'Trivy filesystem scan script'

@@ -23,16 +23,28 @@ Create these exact Jenkins credential IDs:
 
 | Credential ID | Type | Use |
 | --- | --- | --- |
-| `sonarqube-token` | Secret text | SonarCloud/SonarQube analysis |
+| `sonarcloud-token` | Secret text | `Jenkinsfile.ci` SonarCloud analysis and project quality-gate sync |
+| `sonarqube-token` | Secret text | Legacy `Jenkinsfile` SonarCloud/SonarQube analysis and project quality-gate sync |
 | `nvd-api-key` | Secret text | OWASP Dependency-Check NVD updates |
 | `harbor-robot` | Username/password | Harbor robot account |
 | `harbor-ca-cert` | Secret file | Harbor CA certificate, or a harmless trusted CA file if Harbor uses public TLS |
 
 Cosign is configured for AWS KMS by default:
 
+For the Free Tier POC SonarCloud gate, the Sonar token must be able to administer
+the project quality gate. Jenkins syncs `Vault Bank POC Quality Gate` from
+`config/pipeline-policy.yml` before running analysis, including the 50 percent
+new-code coverage threshold.
+
 ```text
 awskms:///alias/vaultbank-cosign
 ```
+
+The Harbor credential used by `Jenkinsfile.ci` must be able to push images,
+read artifacts, and read/update project metadata. Jenkins keeps Harbor automatic
+SBOM generation enabled for `vault-bank`, then waits for Harbor to create the
+SBOM for each pushed digest before moving to the next digest. This avoids
+overlapping Harbor SBOM jobs on the Free Tier EC2 host.
 
 Attach an EC2 IAM role that can use that KMS key. Do not store AWS access keys in Jenkins.
 
