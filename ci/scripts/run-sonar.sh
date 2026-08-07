@@ -20,9 +20,12 @@ source "${VERSIONS_FILE}"
 
 SONAR_TOKEN="${SONAR_TOKEN:-}"
 SONAR_HOST_URL="${SONAR_HOST_URL:-https://sonarcloud.io}"
+SONAR_HOST_URL="${SONAR_HOST_URL%/}"
 SONAR_USER_HOME="${SONAR_USER_HOME:-${HOME}/.sonar}"
 SONAR_QUALITY_GATE_TIMEOUT="${SONAR_QUALITY_GATE_TIMEOUT:-300}"
-SONAR_SYNC_QUALITY_GATE="${SONAR_SYNC_QUALITY_GATE:-1}"
+SONAR_SYNC_QUALITY_GATE="${SONAR_SYNC_QUALITY_GATE:-0}"
+SONAR_ALLOW_QUALITY_GATE_MUTATION="${SONAR_ALLOW_QUALITY_GATE_MUTATION:-0}"
+SONAR_SERVER_QUALITY_GATE_WAIT="${SONAR_SERVER_QUALITY_GATE_WAIT:-false}"
 
 [ -n "${SONAR_TOKEN}" ] ||
   die "SONAR_TOKEN is required from Jenkins credential sonarcloud-token or sonarqube-token"
@@ -90,12 +93,16 @@ printf 'projectKey=%s\norganization=%s\nhost=%s\n' \
 export SONAR_TOKEN
 export SONAR_USER_HOME
 
-if [ "${SONAR_SYNC_QUALITY_GATE}" = "1" ]; then
+if [ "${SONAR_SYNC_QUALITY_GATE}" = "1" ] &&
+   [ "${SONAR_ALLOW_QUALITY_GATE_MUTATION}" = "1" ]; then
   REPORT_DIR="${REPORT_DIR}" \
     RUN_ID="${RUN_ID}" \
     SONAR_HOST_URL="${SONAR_HOST_URL}" \
     SONAR_TOKEN="${SONAR_TOKEN}" \
     bash "${SCRIPT_DIR}/configure-sonar-quality-gate.sh"
+elif [ "${SONAR_SYNC_QUALITY_GATE}" = "1" ]; then
+  log \
+    "Skipping Sonar quality gate sync because SONAR_ALLOW_QUALITY_GATE_MUTATION=${SONAR_ALLOW_QUALITY_GATE_MUTATION}"
 else
   log "Skipping Sonar quality gate sync because SONAR_SYNC_QUALITY_GATE=${SONAR_SYNC_QUALITY_GATE}"
 fi
@@ -103,11 +110,11 @@ fi
 cd "${ROOT_DIR}"
 
 run_logged \
-  "sonar-analysis-and-quality-gate" \
+  "sonar-analysis" \
   sonar-scanner \
   "-Dsonar.host.url=${SONAR_HOST_URL}" \
   "-Dsonar.projectVersion=$(ci_image_tag)" \
-  "-Dsonar.qualitygate.wait=true" \
+  "-Dsonar.qualitygate.wait=${SONAR_SERVER_QUALITY_GATE_WAIT}" \
   "-Dsonar.qualitygate.timeout=${SONAR_QUALITY_GATE_TIMEOUT}"
 
 if [ -f "${ROOT_DIR}/.scannerwork/report-task.txt" ]; then
@@ -116,6 +123,12 @@ if [ -f "${ROOT_DIR}/.scannerwork/report-task.txt" ]; then
     "${REPORT_DIR}/report-task.txt"
 fi
 
+REPORT_DIR="${REPORT_DIR}" \
+  RUN_ID="${RUN_ID}" \
+  SONAR_HOST_URL="${SONAR_HOST_URL}" \
+  SONAR_TOKEN="${SONAR_TOKEN}" \
+  bash "${SCRIPT_DIR}/evaluate-sonar-policy.sh"
+
 unset SONAR_TOKEN
 
-log "PASS: SonarQube Cloud analysis and Quality Gate passed"
+log "PASS: SonarQube Cloud analysis and effective Quality Gate passed"

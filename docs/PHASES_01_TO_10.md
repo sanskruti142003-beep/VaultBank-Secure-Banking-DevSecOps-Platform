@@ -9,7 +9,7 @@ The first ten phases end at signed Harbor image digests. Argo CD, Kubernetes/k3s
 | 1 | GitHub repository contract | `README.md`, `.github/CODEOWNERS`, `.github/pull_request_template.md`, `config/service-map.txt` |
 | 2 | Jenkins foundation | `Jenkinsfile`, `config/tool-versions.env`, `ci/scripts/jenkins-preflight.sh` |
 | 3 | TruffleHog secrets | `ci/scripts/run-trufflehog.sh` |
-| 4 | SonarQube/SonarCloud SAST | `sonar-project.properties`, `ci/scripts/configure-sonar-quality-gate.sh`, `ci/scripts/run-sonar.sh` |
+| 4 | SonarQube/SonarCloud SAST | `sonar-project.properties`, `ci/scripts/evaluate-sonar-policy.sh`, `ci/scripts/run-sonar.sh` |
 | 5 | OWASP Dependency-Check | `ci/scripts/run-dependency-check.sh`, `config/security/dependency-check-suppression.xml` |
 | 6 | Trivy filesystem/config | `ci/scripts/run-trivy-fs.sh`, `.trivyignore.yaml` |
 | 7 | Six deterministic image builds | `ci/scripts/build-images.sh`, `backend-service/Dockerfile`, `frontend/Dockerfile` |
@@ -35,7 +35,7 @@ Reports are Jenkins artifacts and are ignored by Git.
 ## Security Gate Thresholds
 
 - TruffleHog verified findings: `0`
-- SonarQube quality gate: `OK`
+- SonarQube effective quality gate: `OK`
 - Dependency-Check unsuppressed CVSS `>= 7.0`: `0`
 - Trivy critical vulnerabilities: `0`
 - Trivy fixable high vulnerabilities: `0`
