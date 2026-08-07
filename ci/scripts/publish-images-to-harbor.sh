@@ -32,6 +32,8 @@ CHECKSUM_FILE="${REPORT_DIR}/harbor-publication-checksums.sha256"
 
 HARBOR_AUTO_SBOM_REQUIRED="${HARBOR_AUTO_SBOM_REQUIRED:-1}"
 
+HARBOR_ENSURE_AUTO_SBOM_ENABLED="${HARBOR_ENSURE_AUTO_SBOM_ENABLED:-0}"
+
 HARBOR_AUTO_SBOM_TIMEOUT_SECONDS="${HARBOR_AUTO_SBOM_TIMEOUT_SECONDS:-900}"
 
 HARBOR_AUTO_SBOM_POLL_SECONDS="${HARBOR_AUTO_SBOM_POLL_SECONDS:-15}"
@@ -69,6 +71,14 @@ case "${HARBOR_AUTO_SBOM_REQUIRED}" in
     ;;
   *)
     die "HARBOR_AUTO_SBOM_REQUIRED must be 0 or 1"
+    ;;
+esac
+
+case "${HARBOR_ENSURE_AUTO_SBOM_ENABLED}" in
+  0 | 1)
+    ;;
+  *)
+    die "HARBOR_ENSURE_AUTO_SBOM_ENABLED must be 0 or 1"
     ;;
 esac
 
@@ -343,6 +353,12 @@ setup_harbor_api_credentials() {
 ensure_harbor_auto_sbom_enabled() {
   if [ "${HARBOR_AUTO_SBOM_REQUIRED}" != "1" ]; then
     log "Harbor automatic SBOM gate is disabled"
+    return 0
+  fi
+
+  if [ "${HARBOR_ENSURE_AUTO_SBOM_ENABLED}" != "1" ]; then
+    log "Skipping Harbor project metadata update because HARBOR_ENSURE_AUTO_SBOM_ENABLED=${HARBOR_ENSURE_AUTO_SBOM_ENABLED}"
+    log "Harbor automatic SBOM will be validated from the pushed artifact status"
     return 0
   fi
 

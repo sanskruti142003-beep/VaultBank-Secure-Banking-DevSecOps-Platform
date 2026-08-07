@@ -41,11 +41,12 @@ including the 50 percent new-code coverage threshold.
 awskms:///alias/vaultbank-cosign
 ```
 
-The Harbor credential used by `Jenkinsfile.ci` must be able to push images,
-read artifacts, and read/update project metadata. Jenkins keeps Harbor automatic
-SBOM generation enabled for `vault-bank`, then waits for Harbor to create the
-SBOM for each pushed digest before moving to the next digest. This avoids
-overlapping Harbor SBOM jobs on the Free Tier EC2 host.
+The Harbor credential used by `Jenkinsfile.ci` must be able to push images and
+read artifacts. Enable automatic SBOM generation once in Harbor under
+`Projects > vault-bank > Configuration > SBOM generation`, then Jenkins waits
+for Harbor to create the SBOM for each pushed digest before moving to the next
+digest. Keep `HARBOR_ENSURE_AUTO_SBOM_ENABLED=0` unless the Jenkins credential
+also has project metadata read/update permissions.
 
 Attach an EC2 IAM role that can use that KMS key. Do not store AWS access keys in Jenkins.
 
