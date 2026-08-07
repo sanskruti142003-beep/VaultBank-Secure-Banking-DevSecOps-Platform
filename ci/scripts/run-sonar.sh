@@ -24,6 +24,7 @@ SONAR_HOST_URL="${SONAR_HOST_URL%/}"
 SONAR_USER_HOME="${SONAR_USER_HOME:-${HOME}/.sonar}"
 SONAR_QUALITY_GATE_TIMEOUT="${SONAR_QUALITY_GATE_TIMEOUT:-300}"
 SONAR_SYNC_QUALITY_GATE="${SONAR_SYNC_QUALITY_GATE:-0}"
+SONAR_ALLOW_QUALITY_GATE_MUTATION="${SONAR_ALLOW_QUALITY_GATE_MUTATION:-0}"
 SONAR_SERVER_QUALITY_GATE_WAIT="${SONAR_SERVER_QUALITY_GATE_WAIT:-false}"
 
 [ -n "${SONAR_TOKEN}" ] ||
@@ -92,12 +93,16 @@ printf 'projectKey=%s\norganization=%s\nhost=%s\n' \
 export SONAR_TOKEN
 export SONAR_USER_HOME
 
-if [ "${SONAR_SYNC_QUALITY_GATE}" = "1" ]; then
+if [ "${SONAR_SYNC_QUALITY_GATE}" = "1" ] &&
+   [ "${SONAR_ALLOW_QUALITY_GATE_MUTATION}" = "1" ]; then
   REPORT_DIR="${REPORT_DIR}" \
     RUN_ID="${RUN_ID}" \
     SONAR_HOST_URL="${SONAR_HOST_URL}" \
     SONAR_TOKEN="${SONAR_TOKEN}" \
     bash "${SCRIPT_DIR}/configure-sonar-quality-gate.sh"
+elif [ "${SONAR_SYNC_QUALITY_GATE}" = "1" ]; then
+  log \
+    "Skipping Sonar quality gate sync because SONAR_ALLOW_QUALITY_GATE_MUTATION=${SONAR_ALLOW_QUALITY_GATE_MUTATION}"
 else
   log "Skipping Sonar quality gate sync because SONAR_SYNC_QUALITY_GATE=${SONAR_SYNC_QUALITY_GATE}"
 fi
