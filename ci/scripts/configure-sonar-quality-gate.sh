@@ -49,6 +49,7 @@ esac
 
 require_command awk
 require_command curl
+require_command mktemp
 require_command node
 
 project_key="$(
@@ -80,6 +81,27 @@ if [ -n "${organization_key}" ]; then
   organization_args+=(--data-urlencode "organization=${organization_key}")
 fi
 
+SONAR_CURL_CONFIG=""
+
+cleanup() {
+  if [ -n "${SONAR_CURL_CONFIG}" ]; then
+    rm -f "${SONAR_CURL_CONFIG}"
+  fi
+
+  unset SONAR_TOKEN
+}
+
+trap cleanup EXIT
+
+SONAR_CURL_CONFIG="$(
+  mktemp /tmp/vaultbank-sonar-curl.XXXXXX
+)"
+
+chmod 600 "${SONAR_CURL_CONFIG}"
+
+printf 'user = "%s:"\n' "${SONAR_TOKEN}" \
+  > "${SONAR_CURL_CONFIG}"
+
 sonar_get() {
   local endpoint="$1"
   local output_file="$2"
@@ -89,7 +111,7 @@ sonar_get() {
     --fail \
     --silent \
     --show-error \
-    --user "${SONAR_TOKEN}:" \
+    --config "${SONAR_CURL_CONFIG}" \
     --get "${SONAR_HOST_URL}/api/${endpoint}" \
     "$@" \
     --output "${output_file}"
@@ -104,7 +126,7 @@ sonar_post() {
     --fail \
     --silent \
     --show-error \
-    --user "${SONAR_TOKEN}:" \
+    --config "${SONAR_CURL_CONFIG}" \
     --request POST \
     "${SONAR_HOST_URL}/api/${endpoint}" \
     "$@" \
