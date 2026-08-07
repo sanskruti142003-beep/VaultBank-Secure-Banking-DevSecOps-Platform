@@ -13,6 +13,8 @@ pipeline {
     string(name: 'HARBOR_REGISTRY', defaultValue: 'harbor.vaultbank.internal:9443', description: 'Harbor Docker registry host:port; do not include https://')
     string(name: 'SONAR_HOST_URL', defaultValue: 'https://sonarcloud.io', description: 'SonarCloud or SonarQube URL')
     string(name: 'SONAR_ORGANIZATION', defaultValue: '', description: 'Required for SonarCloud, blank for many self-hosted SonarQube installs')
+    string(name: 'STAGING_HOST', defaultValue: 'staging.vaultbank.internal', description: 'Vault Bank staging hostname')
+    string(name: 'STAGING_NODE_IP', defaultValue: '172.31.47.209', description: 'K3s staging node private IP used for project-local DNS bypass')
   }
 
   environment {
@@ -24,6 +26,8 @@ pipeline {
     HARBOR_REGISTRY = "${params.HARBOR_REGISTRY}"
     SONAR_HOST_URL = "${params.SONAR_HOST_URL}"
     SONAR_ORGANIZATION = "${params.SONAR_ORGANIZATION}"
+    STAGING_HOST = "${params.STAGING_HOST}"
+    STAGING_NODE_IP = "${params.STAGING_NODE_IP}"
   }
 
   stages {
@@ -214,6 +218,117 @@ pipeline {
         sh 'bash ci/scripts/publish-harbor.sh manifest'
       }
     }
+
+    stage('20 Verify staging for DAST') {
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          test -n "${STAGING_HOST}"
+          test -n "${STAGING_NODE_IP}"
+
+          mkdir -p reports/phase-11-zap
+
+          HTTP_STATUS="$(
+            curl \
+              --insecure \
+              --silent \
+              --show-error \
+              --max-time 20 \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              --resolve "${STAGING_HOST}:443:${STAGING_NODE_IP}" \
+              "https://${STAGING_HOST}/"
+          )"
+
+          printf 'StagingHTTP=%s\n' "${HTTP_STATUS}" |
+            tee reports/phase-11-zap/staging-preflight.log
+
+          test "${HTTP_STATUS}" = '200'
+
+          echo 'PASS: staging reachable for OWASP ZAP' |
+            tee -a reports/phase-11-zap/staging-preflight.log
+        '''
+      }
+    }
+
+    stage('21 OWASP ZAP baseline DAST') {
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -Eeuo pipefail
+
+          REPORT_DIR="${WORKSPACE}/reports/phase-11-zap"
+          mkdir -p "${REPORT_DIR}"
+
+          ZAP_IMAGE='ghcr.io/zaproxy/zaproxy@sha256:35ea10525f93cfdbf81fd2b8de624f974f7559351f664415156815b49e7e0b66'
+
+          echo '========================================'
+          echo 'OWASP ZAP BASELINE DAST'
+          echo '========================================'
+          echo "Target=https://${STAGING_HOST}"
+          echo "ReportDir=${REPORT_DIR}"
+          echo "ActiveScan=false"
+
+          set +e
+
+          docker run \
+            --rm \
+            --add-host "${STAGING_HOST}:${STAGING_NODE_IP}" \
+            --volume "${REPORT_DIR}:/zap/wrk:rw" \
+            "${ZAP_IMAGE}" \
+            zap-baseline.py \
+            -t "https://${STAGING_HOST}" \
+            -I \
+            -m 1 \
+            -r zap-baseline.html \
+            -J zap-baseline.json \
+            -w zap-baseline.md \
+            2>&1 |
+          tee "${REPORT_DIR}/zap-console.log"
+
+          ZAP_EXIT="${PIPESTATUS[0]}"
+
+          set -e
+
+          printf 'ZapBaselineExit=%s\n' "${ZAP_EXIT}" |
+            tee "${REPORT_DIR}/zap-exit.txt"
+
+          for REPORT in \
+            zap-baseline.html \
+            zap-baseline.json \
+            zap-baseline.md
+          do
+            test -s "${REPORT_DIR}/${REPORT}" || {
+              echo "FAIL: ${REPORT} missing or empty"
+              exit 1
+            }
+
+            echo "PASS: ${REPORT}"
+          done
+
+          case "${ZAP_EXIT}" in
+            0)
+              echo 'PASS: OWASP ZAP baseline scan completed'
+              ;;
+            *)
+              echo "FAIL: ZAP execution returned ${ZAP_EXIT}"
+              exit "${ZAP_EXIT}"
+              ;;
+          esac
+
+          echo 'OwaspZapImplemented=true'
+        '''
+        publishHTML([
+          allowMissing: false,
+          alwaysLinkToLastBuild: true,
+          keepAll: true,
+          reportDir: 'reports/phase-11-zap',
+          reportFiles: 'zap-baseline.html',
+          reportName: 'OWASP ZAP Baseline Report',
+          reportTitles: 'Vault Bank OWASP ZAP Baseline'
+        ])
+      }
+    }
   }
 
   post {
@@ -231,7 +346,7 @@ pipeline {
       echo 'NO-GO: a first-ten-phases gate failed. Do not merge or publish a release.'
     }
     success {
-      echo 'GO: phases 1-10 completed and Harbor release manifest was generated.'
+      echo 'GO: supply-chain gates, Harbor publication and OWASP ZAP baseline DAST completed successfully.'
     }
   }
 }
