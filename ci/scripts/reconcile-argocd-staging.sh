@@ -70,7 +70,6 @@ request_kubectl_sync() {
       "prune": true,
       "syncOptions": [
         "CreateNamespace=false",
-        "ApplyOutOfSyncOnly=true",
         "PruneLast=true"
       ],
       "syncStrategy": {

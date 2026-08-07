@@ -17,6 +17,9 @@ Apply the staging bootstrap whenever the EC2 instance is rebuilt or restarted
 after a long stop. The bootstrap reapplies the Argo CD AppProjects before the
 Applications, which keeps PreSync resources such as database migration Jobs
 permitted by the restricted `vault-bank-staging` project.
+The staging application intentionally does not use `ApplyOutOfSyncOnly=true`
+because selective sync skips hook execution, and the staging overlay depends on
+PreSync migration and ZAP seed Jobs.
 
 ```bash
 bash ci/scripts/reconcile-argocd-staging.sh
