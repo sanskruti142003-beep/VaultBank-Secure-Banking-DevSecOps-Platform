@@ -794,8 +794,7 @@ PYTHON
 
           STAGING_HOST="${STAGING_HOST:-staging.vaultbank.internal}"
           REPORT_DIR="${WORKSPACE}/reports/phase-11-zap"
-          ZAP_TMP_DIR="${REPORT_DIR}/tmp"
-          mkdir -p "${REPORT_DIR}" "${ZAP_TMP_DIR}"
+          mkdir -p "${REPORT_DIR}"
 
           STAGING_NODE_IP="$(
             kubectl \
@@ -847,8 +846,8 @@ PYTHON
 
           STAGING_HOST="${STAGING_HOST:-staging.vaultbank.internal}"
           REPORT_DIR="${WORKSPACE}/reports/phase-11-zap"
-          ZAP_TMP_DIR="${REPORT_DIR}/tmp"
-          mkdir -p "${REPORT_DIR}" "${ZAP_TMP_DIR}"
+          mkdir -p "${REPORT_DIR}"
+          chmod 0777 "${REPORT_DIR}"
 
           if [ -f "${REPORT_DIR}/staging-node-ip.env" ]; then
             # shellcheck disable=SC1091
@@ -880,12 +879,8 @@ PYTHON
 
           docker run \
             --rm \
-            --user "$(id -u):$(id -g)" \
-            --env HOME=/tmp \
-            --env TMPDIR=/tmp \
             --add-host "${STAGING_HOST}:${STAGING_NODE_IP}" \
             --volume "${REPORT_DIR}:/zap/wrk:rw" \
-            --volume "${ZAP_TMP_DIR}:/tmp:rw" \
             --workdir /zap/wrk \
             "${ZAP_IMAGE}" \
             zap-baseline.py \
