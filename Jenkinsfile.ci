@@ -847,7 +847,8 @@ PYTHON
 
           STAGING_HOST="${STAGING_HOST:-staging.vaultbank.internal}"
           REPORT_DIR="${WORKSPACE}/reports/phase-11-zap"
-          mkdir -p "${REPORT_DIR}"
+          ZAP_TMP_DIR="${REPORT_DIR}/tmp"
+          mkdir -p "${REPORT_DIR}" "${ZAP_TMP_DIR}"
 
           if [ -f "${REPORT_DIR}/staging-node-ip.env" ]; then
             # shellcheck disable=SC1091
