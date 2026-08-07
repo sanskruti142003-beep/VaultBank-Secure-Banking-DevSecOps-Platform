@@ -10,14 +10,14 @@ pipeline {
   }
 
   parameters {
-    string(name: 'HARBOR_REGISTRY', defaultValue: '', description: 'Harbor registry host, for example harbor.example.com')
+    string(name: 'HARBOR_REGISTRY', defaultValue: 'harbor.vaultbank.internal:9443', description: 'Harbor Docker registry host:port; do not include https://')
     string(name: 'SONAR_HOST_URL', defaultValue: 'https://sonarcloud.io', description: 'SonarCloud or SonarQube URL')
     string(name: 'SONAR_ORGANIZATION', defaultValue: '', description: 'Required for SonarCloud, blank for many self-hosted SonarQube installs')
   }
 
   environment {
     REPORT_ROOT = "${env.WORKSPACE}/reports"
-    HARBOR_PROJECT = 'vaultbank'
+    HARBOR_PROJECT = 'vault-bank'
     COSIGN_KEY_REF = 'awskms:///alias/vaultbank-cosign'
     DEPENDENCY_CHECK_FAIL_ON_CVSS = '7'
     DEPENDENCY_CHECK_DATA_DIR = '/var/lib/jenkins/dependency-check-data'
