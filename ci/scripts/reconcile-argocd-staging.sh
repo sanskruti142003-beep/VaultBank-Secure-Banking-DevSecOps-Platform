@@ -13,6 +13,7 @@ POLL_SECONDS="${ARGOCD_POLL_SECONDS:-10}"
 
 require_command kubectl
 require_command grep
+require_command sed
 require_command tail
 
 case "${WAIT_TIMEOUT_SECONDS}" in
@@ -93,6 +94,59 @@ JSON
   fi
 }
 
+clear_stale_operation() {
+  local app="$1"
+  local phase
+
+  phase="$(
+    kubectl get application "${app}" \
+      --namespace "${ARGOCD_NAMESPACE}" \
+      -o jsonpath='{.status.operationState.phase}' 2>/dev/null ||
+      true
+  )"
+
+  case "${phase}" in
+    Error | Failed)
+      log "Clearing stale ${phase} Argo CD operation for ${app}"
+      kubectl patch application "${app}" \
+        --namespace "${ARGOCD_NAMESPACE}" \
+        --type json \
+        --patch '[{"op":"remove","path":"/operation"}]' \
+        >/dev/null 2>&1 ||
+        true
+      ;;
+  esac
+}
+
+print_app_diagnostics() {
+  local app="$1"
+
+  log "Current Argo CD status for ${app}"
+  kubectl get application "${app}" \
+    --namespace "${ARGOCD_NAMESPACE}" \
+    -o jsonpath='sync={.status.sync.status} health={.status.health.status} revision={.status.sync.revision} operation={.status.operationState.phase}{"\n"}' ||
+    true
+
+  log "Recent Argo CD operation message for ${app}"
+  kubectl get application "${app}" \
+    --namespace "${ARGOCD_NAMESPACE}" \
+    -o jsonpath='{.status.operationState.message}{"\n"}' ||
+    true
+
+  log "OutOfSync resources for ${app}"
+  kubectl get application "${app}" \
+    --namespace "${ARGOCD_NAMESPACE}" \
+    -o jsonpath='{range .status.resources[?(@.status=="OutOfSync")]}{.group}{"/"}{.kind}{" "}{.namespace}{"/"}{.name}{"\n"}{end}' ||
+    true
+
+  log "Last sync resource results for ${app}"
+  kubectl get application "${app}" \
+    --namespace "${ARGOCD_NAMESPACE}" \
+    -o jsonpath='{range .status.operationState.syncResult.resources[*]}{.syncPhase}{" "}{.kind}{" "}{.namespace}{"/"}{.name}{" "}{.status}{" "}{.message}{"\n"}{end}' |
+    sed '/^$/d' ||
+    true
+}
+
 if command -v argocd >/dev/null 2>&1 &&
   argocd app get "${STAGING_APP}" >/dev/null 2>&1; then
   log "Syncing ${RUNTIME_APP} with Argo CD CLI"
@@ -102,6 +156,8 @@ if command -v argocd >/dev/null 2>&1 &&
   argocd app sync "${STAGING_APP}" --timeout "${WAIT_TIMEOUT_SECONDS}"
 else
   log "Argo CD CLI is unavailable or not logged in; requesting sync through Kubernetes"
+  clear_stale_operation "${RUNTIME_APP}"
+  clear_stale_operation "${STAGING_APP}"
   request_kubectl_sync "${RUNTIME_APP}"
   request_kubectl_sync "${STAGING_APP}"
 fi
@@ -125,6 +181,9 @@ while true; do
     kubectl get applications.argoproj.io \
       --namespace "${ARGOCD_NAMESPACE}" ||
       true
+
+    print_app_diagnostics "${RUNTIME_APP}"
+    print_app_diagnostics "${STAGING_APP}"
 
     kubectl describe application "${STAGING_APP}" \
       --namespace "${ARGOCD_NAMESPACE}" |
