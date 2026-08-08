@@ -1,0 +1,12 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: vaultbank-https-redirect
+  namespace: vault-bank-prod
+  labels:
+    app.kubernetes.io/name: vaultbank-https-redirect
+    app.kubernetes.io/part-of: vaultbank
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

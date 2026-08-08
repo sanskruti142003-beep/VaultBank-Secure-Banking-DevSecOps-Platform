@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vaultbank-prod-free-tier-quota
+spec:
+  hard:
+    requests.cpu: "500m"
+    requests.memory: 1200Mi
+    limits.cpu: "2000m"
+    limits.memory: 2600Mi
+    pods: "15"
