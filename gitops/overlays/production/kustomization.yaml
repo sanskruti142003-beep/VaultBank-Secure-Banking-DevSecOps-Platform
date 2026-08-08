@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: vault-bank-prod
 
 resources:
+  - allow-prometheus-scrape.yaml
   - allow-shared-runtime-egress.yaml
   - shared-runtime-aliases.yaml
   - namespace.yaml
