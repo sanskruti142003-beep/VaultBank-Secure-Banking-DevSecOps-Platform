@@ -7,6 +7,28 @@ spec:
   policyTypes:
     - Egress
   egress:
+
+    # Kubernetes DNS / CoreDNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # HashiCorp Vault
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault
+      ports:
+        - protocol: TCP
+          port: 8200
+
+    # Shared staging runtime
     - to:
         - namespaceSelector:
             matchLabels:
@@ -18,3 +40,9 @@ spec:
           port: 6379
         - protocol: TCP
           port: 5672
+
+    # Production microservice-to-microservice traffic
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault-bank-prod
