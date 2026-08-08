@@ -2210,6 +2210,176 @@ SUMMARY
       }
     }
 
+    stage('28 Alertmanager Integration Verification') {
+      when {
+        branch 'main'
+      }
+
+      options {
+        timeout(time: 5, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          PROMETHEUS_URL='http://127.0.0.1:30900'
+          REPORT_DIR='reports/phase-28-alertmanager'
+
+          mkdir -p "${REPORT_DIR}"
+
+          echo '=================================================='
+          echo 'ALERTMANAGER INTEGRATION VERIFICATION'
+          echo '=================================================='
+
+          command -v curl >/dev/null 2>&1
+          command -v jq >/dev/null 2>&1
+
+          echo
+          echo '========== PROMETHEUS READINESS =========='
+
+          curl \
+            --silent \
+            --show-error \
+            --fail \
+            "${PROMETHEUS_URL}/-/ready" \
+            | tee "${REPORT_DIR}/prometheus-ready.txt"
+
+          echo
+          echo '========== ALERTMANAGER DISCOVERY =========='
+
+          curl \
+            --silent \
+            --show-error \
+            --fail \
+            "${PROMETHEUS_URL}/api/v1/alertmanagers" \
+            > "${REPORT_DIR}/alertmanagers.json"
+
+          jq . "${REPORT_DIR}/alertmanagers.json"
+
+          ACTIVE="$(
+            jq '
+              .data.activeAlertmanagers | length
+            ' "${REPORT_DIR}/alertmanagers.json"
+          )"
+
+          DROPPED="$(
+            jq '
+              .data.droppedAlertmanagers | length
+            ' "${REPORT_DIR}/alertmanagers.json"
+          )"
+
+          echo
+          echo "ActiveAlertmanagers=${ACTIVE}"
+          echo "DroppedAlertmanagers=${DROPPED}"
+
+          if [ "${ACTIVE}" -lt 1 ]; then
+            echo 'FAIL: no active Alertmanager configured'
+            exit 1
+          fi
+
+          if ! jq -e '
+            [
+              .data.activeAlertmanagers[]?
+              | .url
+              | select(
+                  contains("alertmanager")
+                  and
+                  contains("9093")
+                )
+            ]
+            | length >= 1
+          ' "${REPORT_DIR}/alertmanagers.json" >/dev/null
+          then
+            echo 'FAIL: expected alertmanager:9093 not discovered'
+            exit 1
+          fi
+
+          echo
+          echo '========== ACTIVE ALERTMANAGER URL =========='
+
+          jq -r \
+            '.data.activeAlertmanagers[]?.url' \
+            "${REPORT_DIR}/alertmanagers.json"
+
+          echo
+          echo '========== ALERT RULES =========='
+
+          curl \
+            --silent \
+            --show-error \
+            --fail \
+            "${PROMETHEUS_URL}/api/v1/rules" \
+            > "${REPORT_DIR}/rules.json"
+
+          jq -r '
+            .data.groups[]? as $group
+            | $group.rules[]?
+            |
+            [
+              $group.name,
+              .name,
+              (.state // "unknown"),
+              (.health // "unknown")
+            ]
+            | @tsv
+          ' "${REPORT_DIR}/rules.json" \
+          | tee "${REPORT_DIR}/rules.txt"
+
+          RULE_COUNT="$(
+            jq '
+              [
+                .data.groups[]?.rules[]?
+              ]
+              | length
+            ' "${REPORT_DIR}/rules.json"
+          )"
+
+          UNHEALTHY_RULES="$(
+            jq '
+              [
+                .data.groups[]?.rules[]?
+                | select(
+                    (.health // "unknown") != "ok"
+                  )
+              ]
+              | length
+            ' "${REPORT_DIR}/rules.json"
+          )"
+
+          echo
+          echo "PrometheusRuleCount=${RULE_COUNT}"
+          echo "UnhealthyRules=${UNHEALTHY_RULES}"
+
+          if [ "${RULE_COUNT}" -lt 3 ]; then
+            echo 'FAIL: expected at least 3 Vault Bank alert rules'
+            exit 1
+          fi
+
+          if [ "${UNHEALTHY_RULES}" -ne 0 ]; then
+            echo 'FAIL: unhealthy Prometheus alert rules detected'
+            exit 1
+          fi
+
+          cat > "${REPORT_DIR}/summary.txt" <<SUMMARY
+ActiveAlertmanagers=${ACTIVE}
+DroppedAlertmanagers=${DROPPED}
+PrometheusRuleCount=${RULE_COUNT}
+UnhealthyRules=${UNHEALTHY_RULES}
+AlertmanagerConnected=true
+AlertmanagerVerificationPassed=true
+SUMMARY
+
+          echo
+          echo '========== ALERTMANAGER SUMMARY =========='
+          cat "${REPORT_DIR}/summary.txt"
+
+          echo
+          echo 'PASS: Alertmanager integration verification completed'
+        '''
+      }
+    }
+
   }
 
   post {
