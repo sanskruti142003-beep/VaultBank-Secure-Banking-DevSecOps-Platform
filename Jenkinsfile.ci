@@ -639,7 +639,7 @@ if set(images) != set(expected_services):
     )
 
 reference_pattern = re.compile(
-    r"^harbor\.vaultbank\.internal:9443/"
+    r"^harbor[.]vaultbank[.]internal:9443/"
     r"vault-bank/[a-z0-9._-]+"
     r"@sha256:[0-9a-f]{64}$"
 )
