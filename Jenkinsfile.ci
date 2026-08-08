@@ -646,6 +646,19 @@ pipeline {
               INGRESS_STATUS_PUBLISHED=1
               echo "Published k3s node IP ${STAGING_NODE_IP} to ${PATCHED_INGRESSES} staging Ingress status record(s)" |
                 tee -a "${REPORT_DIR}/argocd-convergence.log"
+
+              REFRESH_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+              kubectl \
+                --namespace argocd \
+                annotate \
+                application vault-bank-staging \
+                argocd.argoproj.io/refresh=hard \
+                "vault-bank.io/ingress-status-refreshed-at=${REFRESH_STAMP}" \
+                --overwrite \
+                >/dev/null
+
+              echo "Requested Argo CD hard refresh for vault-bank-staging after staging Ingress status update" |
+                tee -a "${REPORT_DIR}/argocd-convergence.log"
             fi
           }
 
@@ -733,6 +746,13 @@ JSON
                   get application "${APP}" \
                   --output yaml \
                   > "${REPORT_DIR}/${APP}.yaml" || true
+
+                kubectl \
+                  --namespace argocd \
+                  get application "${APP}" \
+                  --output jsonpath='{range .status.resources[*]}{.group}{"/"}{.kind}{" "}{.namespace}{"/"}{.name}{" health="}{.health.status}{" message="}{.health.message}{"\\n"}{end}' |
+                  grep -Ev ' health=$| health=Healthy( |$)' \
+                  > "${REPORT_DIR}/${APP}-unhealthy-resources.log" || true
 
                 echo "FAIL: ${APP} did not converge to Synced/Healthy within ${TIMEOUT_SECONDS} seconds"
                 exit 1

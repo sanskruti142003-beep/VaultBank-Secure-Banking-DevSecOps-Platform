@@ -189,6 +189,15 @@ publish_staging_ingress_status() {
   if [ "${patched}" -gt 0 ]; then
     INGRESS_STATUS_PUBLISHED=1
     log "Published k3s node IP ${node_ip} to ${patched} staging Ingress status record(s)"
+
+    refresh_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    kubectl annotate application "${STAGING_APP}" \
+      --namespace "${ARGOCD_NAMESPACE}" \
+      argocd.argoproj.io/refresh=hard \
+      "vault-bank.io/ingress-status-refreshed-at=${refresh_stamp}" \
+      --overwrite \
+      >/dev/null
+    log "Requested Argo CD hard refresh for ${STAGING_APP} after staging Ingress status update"
   fi
 }
 
@@ -211,6 +220,13 @@ print_app_diagnostics() {
   kubectl get application "${app}" \
     --namespace "${ARGOCD_NAMESPACE}" \
     -o jsonpath='{range .status.resources[?(@.status=="OutOfSync")]}{.group}{"/"}{.kind}{" "}{.namespace}{"/"}{.name}{"\n"}{end}' ||
+    true
+
+  log "Unhealthy resources for ${app}"
+  kubectl get application "${app}" \
+    --namespace "${ARGOCD_NAMESPACE}" \
+    -o jsonpath='{range .status.resources[*]}{.group}{"/"}{.kind}{" "}{.namespace}{"/"}{.name}{" health="}{.health.status}{" message="}{.health.message}{"\n"}{end}' |
+    grep -Ev ' health=$| health=Healthy( |$)' ||
     true
 
   log "Last sync resource results for ${app}"
