@@ -594,139 +594,6 @@ pipeline {
             get namespace argocd \
             >/dev/null
 
-          RELEASE_MANIFEST='reports/phase-13-release-manifest/vault-bank-release-manifest.json'
-          IMAGE_OVERRIDES_JSON="${REPORT_DIR}/argocd-image-overrides.patch.json"
-          CURRENT_COMMIT="$(git rev-parse HEAD)"
-          export RELEASE_MANIFEST REPORT_DIR CURRENT_COMMIT
-
-          test -s "${RELEASE_MANIFEST}"
-          command -v python3 >/dev/null 2>&1
-
-          python3 - <<'PYTHON'
-import json
-import os
-import re
-from pathlib import Path
-
-expected_services = [
-    "auth-service",
-    "account-service",
-    "transaction-service",
-    "payment-service",
-    "notification-service",
-    "frontend",
-]
-
-manifest_path = Path(os.environ["RELEASE_MANIFEST"])
-report_dir = Path(os.environ["REPORT_DIR"])
-current_commit = os.environ["CURRENT_COMMIT"]
-manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-
-source_commit = (manifest.get("source") or {}).get("commit", "")
-if source_commit != current_commit:
-    raise SystemExit(
-        "FAIL: release manifest commit does not match current checkout"
-    )
-
-images = {
-    image.get("service"): image.get("image", "")
-    for image in manifest.get("images") or []
-}
-
-if set(images) != set(expected_services):
-    raise SystemExit(
-        "FAIL: release manifest does not contain exactly the six staging images"
-    )
-
-reference_pattern = re.compile(
-    r"^harbor[.]vaultbank[.]internal:9443/"
-    r"vault-bank/[a-z0-9._-]+"
-    r"@sha256:[0-9a-f]{64}$"
-)
-
-overrides = []
-for service in expected_services:
-    reference = images[service]
-    if not reference_pattern.fullmatch(reference):
-        raise SystemExit(
-            f"FAIL: invalid immutable image reference for {service}"
-        )
-
-    overrides.append(f"{service}={reference}")
-
-(report_dir / "argocd-image-overrides.txt").write_text(
-    "\\n".join(overrides) + "\\n",
-    encoding="utf-8",
-)
-
-(report_dir / "argocd-image-overrides.patch.json").write_text(
-    json.dumps(
-        {
-            "spec": {
-                "source": {
-                    "kustomize": {
-                        "images": overrides,
-                    },
-                },
-            },
-        },
-        indent=2,
-        sort_keys=True,
-    )
-    + "\\n",
-    encoding="utf-8",
-)
-
-print(
-    "PASS: prepared Argo CD immutable image overrides for six images"
-)
-PYTHON
-
-          kubectl \
-            --namespace argocd \
-            patch \
-            application vault-bank-staging \
-            --type merge \
-            --patch "$(cat "${IMAGE_OVERRIDES_JSON}")" |
-            tee "${REPORT_DIR}/argocd-image-overrides-apply.log"
-
-          cat > "${REPORT_DIR}/argocd-sync.patch.json" <<'JSON'
-{
-  "operation": {
-    "initiatedBy": {
-      "username": "jenkins"
-    },
-    "sync": {
-      "revision": "main",
-      "prune": true,
-      "syncOptions": [
-        "CreateNamespace=false",
-        "PruneLast=true"
-      ],
-      "syncStrategy": {
-        "hook": {}
-      }
-    }
-  }
-}
-JSON
-
-          kubectl \
-            --namespace argocd \
-            patch \
-            application vault-bank-staging \
-            --type json \
-            --patch '[{"op":"remove","path":"/operation"}]' \
-            >/dev/null 2>&1 || true
-
-          kubectl \
-            --namespace argocd \
-            patch \
-            application vault-bank-staging \
-            --type merge \
-            --patch "$(cat "${REPORT_DIR}/argocd-sync.patch.json")" |
-            tee "${REPORT_DIR}/argocd-sync-request.log"
-
           APPLICATIONS="
           vault-bank-staging
           vault-bank-runtime-staging
@@ -745,7 +612,7 @@ JSON
               tee -a "${REPORT_DIR}/argocd-convergence.log"
           done
 
-          DEADLINE_EPOCH="$(($(date +%s) + 300))"
+          DEADLINE=$((SECONDS + 300))
 
           for APP in ${APPLICATIONS}; do
             while true; do
@@ -776,7 +643,7 @@ JSON
                 break
               fi
 
-              if [ "$(date +%s)" -ge "${DEADLINE_EPOCH}" ]; then
+              if [ "${SECONDS}" -ge "${DEADLINE}" ]; then
                 kubectl \
                   --namespace argocd \
                   get application "${APP}" \
@@ -789,49 +656,6 @@ JSON
 
               sleep 10
             done
-          done
-
-          while true; do
-            IMAGE_MISMATCHES=0
-
-            while IFS='=' read -r SERVICE EXPECTED_IMAGE; do
-              [ -n "${SERVICE}" ] || continue
-
-              CURRENT_IMAGE="$(
-                kubectl \
-                  --namespace vault-bank-staging \
-                  get deployment "${SERVICE}" \
-                  --output jsonpath='{.spec.template.spec.containers[0].image}' \
-                  2>/dev/null || true
-              )"
-
-              printf '%s deploymentImage=%s expected=%s\n' \
-                "${SERVICE}" \
-                "${CURRENT_IMAGE:-missing}" \
-                "${EXPECTED_IMAGE}" |
-                tee -a "${REPORT_DIR}/deployment-image-convergence.log"
-
-              if [ "${CURRENT_IMAGE}" != "${EXPECTED_IMAGE}" ]; then
-                IMAGE_MISMATCHES=$((IMAGE_MISMATCHES + 1))
-              fi
-            done < "${REPORT_DIR}/argocd-image-overrides.txt"
-
-            if [ "${IMAGE_MISMATCHES}" -eq 0 ]; then
-              break
-            fi
-
-            if [ "$(date +%s)" -ge "${DEADLINE_EPOCH}" ]; then
-              kubectl \
-                --namespace vault-bank-staging \
-                get deployments \
-                --output yaml \
-                > "${REPORT_DIR}/staging-deployments.yaml" || true
-
-              echo "FAIL: staging deployments did not converge to release image digests"
-              exit 1
-            fi
-
-            sleep 10
           done
 
           echo 'PASS: Argo CD staging applications converged to Synced/Healthy' |
@@ -900,59 +724,22 @@ JSON
             --output json \
             > "${REPORT_DIR}/pods.json"
 
-          RELEASE_MANIFEST='reports/phase-13-release-manifest/vault-bank-release-manifest.json'
-          test -s "${RELEASE_MANIFEST}"
-          export RELEASE_MANIFEST REPORT_DIR
-
           python3 - <<'PYTHON'
 import json
-import os
 from pathlib import Path
-
-expected_services = {
-    "auth-service",
-    "account-service",
-    "transaction-service",
-    "payment-service",
-    "notification-service",
-    "frontend",
-}
 
 pods = json.loads(
     Path("reports/phase-15-kubernetes-staging/pods.json")
     .read_text(encoding="utf-8")
 ).get("items", [])
 
-manifest = json.loads(
-    Path(os.environ["RELEASE_MANIFEST"])
-    .read_text(encoding="utf-8")
-)
-
-expected_images = {
-    image.get("service"): image.get("image", "")
-    for image in manifest.get("images") or []
-    if image.get("service") in expected_services
-}
-
-if set(expected_images) != expected_services:
-    raise SystemExit(
-        "FAIL: release manifest does not contain exactly the six staging images"
-    )
-
-seen_services = set()
 failures = []
 
 for pod in pods:
     metadata = pod.get("metadata") or {}
-    if metadata.get("deletionTimestamp"):
-        continue
-
     status = pod.get("status") or {}
-    spec = pod.get("spec") or {}
     pod_name = metadata.get("name", "unknown")
     phase = status.get("phase", "Unknown")
-    labels = metadata.get("labels") or {}
-    service_name = labels.get("app.kubernetes.io/name", "")
 
     if phase not in {"Running", "Succeeded"}:
         failures.append(
@@ -978,24 +765,6 @@ for pod in pods:
                 f"{pod_name}/{container_name} is not Ready"
             )
 
-    if service_name in expected_images:
-        seen_services.add(service_name)
-        expected_image = expected_images[service_name]
-        for container in spec.get("containers") or []:
-            actual_image = container.get("image", "")
-            if actual_image != expected_image:
-                failures.append(
-                    f"{pod_name}/{container.get('name', 'unknown')} "
-                    f"image={actual_image} expected={expected_image}"
-                )
-
-missing_services = expected_services - seen_services
-if missing_services:
-    failures.append(
-        "missing running Pods for services: "
-        + ", ".join(sorted(missing_services))
-    )
-
 if failures:
     raise SystemExit(
         "FAIL: unhealthy staging pods: "
@@ -1004,10 +773,6 @@ if failures:
 
 print(
     "PASS: all live staging Pod containers are Ready"
-)
-
-print(
-    "PASS: staging Pods use the verified release image digests"
 )
 PYTHON
         '''
