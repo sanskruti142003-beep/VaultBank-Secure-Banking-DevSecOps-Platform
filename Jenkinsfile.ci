@@ -889,6 +889,7 @@ PYTHON
             -m 1 \
             -r zap-baseline.html \
             -J zap-baseline.json \
+            -x zap-baseline.xml \
             -w zap-baseline.md \
             2>&1 |
           tee "${REPORT_DIR}/zap-console.log"
@@ -903,6 +904,7 @@ PYTHON
           for REPORT in \
             zap-baseline.html \
             zap-baseline.json \
+            zap-baseline.xml \
             zap-baseline.md
           do
             test -s "${REPORT_DIR}/${REPORT}" || {
@@ -939,6 +941,7 @@ PYTHON
 
           test -s reports/phase-11-zap/zap-baseline.html
           test -s reports/phase-11-zap/zap-baseline.json
+          test -s reports/phase-11-zap/zap-baseline.xml
           test -s reports/phase-11-zap/zap-baseline.md
           test -s reports/phase-11-zap/zap-console.log
           test -s reports/phase-11-zap/zap-exit.txt
@@ -1509,6 +1512,266 @@ PYTHON
           fi
 
         '''
+      }
+    }
+
+    stage('24 DefectDojo API Preflight') {
+      when {
+        branch 'main'
+      }
+
+      steps {
+        withCredentials([
+          string(
+            credentialsId: 'defectdojo-api-token',
+            variable: 'DEFECTDOJO_API_TOKEN'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+            set +x
+
+            DEFECTDOJO_URL='http://127.0.0.1:8081'
+            REPORT_DIR='reports/phase-12-defectdojo'
+            ZAP_JSON='reports/phase-11-zap/zap-baseline.json'
+
+            mkdir -p "${REPORT_DIR}"
+            test -s "${ZAP_JSON}"
+            command -v jq >/dev/null 2>&1
+
+            HTTP_STATUS="$(
+              curl \
+                --silent \
+                --show-error \
+                --output "${REPORT_DIR}/preflight-response.json" \
+                --write-out '%{http_code}' \
+                --header "Authorization: Token ${DEFECTDOJO_API_TOKEN}" \
+                --header 'Accept: application/json' \
+                "${DEFECTDOJO_URL%/}/api/v2/products/?limit=1"
+            )"
+
+            printf 'DefectDojoAPIHTTP=%s\n' "${HTTP_STATUS}"
+            test "${HTTP_STATUS}" = '200'
+            jq -e 'type == "object"' \
+              "${REPORT_DIR}/preflight-response.json" >/dev/null
+
+            echo 'PASS: DefectDojo API authenticated'
+            echo 'DefectDojoReady=true'
+          '''
+        }
+      }
+    }
+
+    stage('25 DefectDojo ZAP Reimport') {
+      when {
+        branch 'main'
+      }
+
+      steps {
+        withCredentials([
+          string(
+            credentialsId: 'defectdojo-api-token',
+            variable: 'DEFECTDOJO_API_TOKEN'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+            set +x
+
+            DEFECTDOJO_URL='http://127.0.0.1:8081'
+            REPORT_DIR='reports/phase-12-defectdojo'
+            ZAP_JSON='reports/phase-11-zap/zap-baseline.json'
+            ZAP_XML='reports/phase-11-zap/zap-baseline.xml'
+            BUILD_ID_VALUE="${BUILD_NUMBER:-local}"
+            BRANCH_TAG_VALUE="${BRANCH_NAME:-main}"
+            COMMIT_HASH_VALUE="${GIT_COMMIT:-$(git rev-parse HEAD)}"
+
+            mkdir -p "${REPORT_DIR}"
+            test -s "${ZAP_JSON}"
+            test -s "${ZAP_XML}"
+            command -v jq >/dev/null 2>&1
+
+            HTTP_STATUS="$(
+              curl \
+                --silent \
+                --show-error \
+                --output "${REPORT_DIR}/import-response.json" \
+                --write-out '%{http_code}' \
+                --header "Authorization: Token ${DEFECTDOJO_API_TOKEN}" \
+                --form 'scan_type=ZAP Scan' \
+                --form 'minimum_severity=Info' \
+                --form 'active=true' \
+                --form 'verified=false' \
+                --form 'close_old_findings=false' \
+                --form 'do_not_reactivate=false' \
+                --form 'auto_create_context=true' \
+                --form 'product_type_name=DevSecOps Practice' \
+                --form 'product_name=Vault Bank' \
+                --form 'engagement_name=Jenkins Security Pipeline' \
+                --form 'test_title=Jenkins OWASP ZAP Baseline' \
+                --form "build_id=${BUILD_ID_VALUE}" \
+                --form "branch_tag=${BRANCH_TAG_VALUE}" \
+                --form "commit_hash=${COMMIT_HASH_VALUE}" \
+                --form 'background_import=false' \
+                --form "file=@${ZAP_XML};type=application/xml" \
+                "${DEFECTDOJO_URL%/}/api/v2/reimport-scan/"
+            )"
+
+            printf '%s\n' "${HTTP_STATUS}" \
+              > "${REPORT_DIR}/import-http.txt"
+            printf 'DefectDojoImportHTTP=%s\n' "${HTTP_STATUS}"
+
+            case "${HTTP_STATUS}" in
+              200|201)
+                ;;
+              *)
+                echo "FAIL: DefectDojo reimport returned ${HTTP_STATUS}"
+                exit 1
+                ;;
+            esac
+
+            jq -e 'type == "object"' \
+              "${REPORT_DIR}/import-response.json" >/dev/null
+
+            TEST_ID="$(
+              jq -r '
+                def numeric_id:
+                  if type == "number" then tostring
+                  elif type == "string" and test("^[0-9]+$") then .
+                  elif type == "string"
+                    and test("/tests/[0-9]+/?$")
+                  then capture("/tests/(?<id>[0-9]+)/?$").id
+                  elif type == "object"
+                    and (.id? | type == "number")
+                  then (.id | tostring)
+                  elif type == "object"
+                    and (.id? | type == "string")
+                    and (.id | test("^[0-9]+$"))
+                  then .id
+                  elif type == "object"
+                    and (.id? | type == "string")
+                    and (.id | test("/tests/[0-9]+/?$"))
+                  then (
+                    .id |
+                    capture("/tests/(?<id>[0-9]+)/?$").id
+                  )
+                  else empty
+                  end;
+
+                [
+                  (.test_id? | numeric_id),
+                  (.test? | numeric_id),
+                  (.data?.test_id? | numeric_id),
+                  (.data?.test? | numeric_id),
+                  (.results?.test_id? | numeric_id),
+                  (.results?.test? | numeric_id),
+                  (.. | objects | .test_id? | numeric_id),
+                  (.. | objects | .test? | numeric_id)
+                ]
+                | map(select(. != ""))
+                | .[0] // empty
+              ' "${REPORT_DIR}/import-response.json"
+            )"
+
+            if ! printf '%s\n' "${TEST_ID}" |
+              grep -Eq '^[0-9]+$'
+            then
+              echo 'FAIL: unable to determine DefectDojo Test ID'
+              exit 1
+            fi
+
+            printf '%s\n' "${TEST_ID}" \
+              > "${REPORT_DIR}/test-id.txt"
+            printf 'DefectDojoTestID=%s\n' "${TEST_ID}"
+
+            echo 'PASS: ZAP report imported into DefectDojo'
+            echo 'DefectDojoImplemented=true'
+          '''
+        }
+      }
+    }
+
+    stage('26 DefectDojo Findings Gate') {
+      when {
+        branch 'main'
+      }
+
+      steps {
+        withCredentials([
+          string(
+            credentialsId: 'defectdojo-api-token',
+            variable: 'DEFECTDOJO_API_TOKEN'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+            set +x
+
+            DEFECTDOJO_URL='http://127.0.0.1:8081'
+            REPORT_DIR='reports/phase-12-defectdojo'
+            TEST_ID="$(
+              tr -d '[:space:]' < "${REPORT_DIR}/test-id.txt"
+            )"
+
+            test -n "${TEST_ID}"
+            command -v jq >/dev/null 2>&1
+
+            HTTP_STATUS="$(
+              curl \
+                --silent \
+                --show-error \
+                --output "${REPORT_DIR}/findings.json" \
+                --write-out '%{http_code}' \
+                --header "Authorization: Token ${DEFECTDOJO_API_TOKEN}" \
+                --header 'Accept: application/json' \
+                "${DEFECTDOJO_URL%/}/api/v2/findings/?test=${TEST_ID}&active=true&limit=200"
+            )"
+
+            printf 'DefectDojoFindingsHTTP=%s\n' "${HTTP_STATUS}"
+            test "${HTTP_STATUS}" = '200'
+            jq -e 'type == "object"' \
+              "${REPORT_DIR}/findings.json" >/dev/null
+
+            count_severity() {
+              jq -r \
+                --arg severity "$1" \
+                '[.results[]? | select(.severity == $severity)] | length' \
+                "${REPORT_DIR}/findings.json"
+            }
+
+            CRITICAL_COUNT="$(count_severity Critical)"
+            HIGH_COUNT="$(count_severity High)"
+            MEDIUM_COUNT="$(count_severity Medium)"
+            LOW_COUNT="$(count_severity Low)"
+            INFO_COUNT="$(count_severity Info)"
+
+            printf 'CriticalFindings=%s\n' "${CRITICAL_COUNT}"
+            printf 'HighFindings=%s\n' "${HIGH_COUNT}"
+            printf 'MediumFindings=%s\n' "${MEDIUM_COUNT}"
+            printf 'LowFindings=%s\n' "${LOW_COUNT}"
+            printf 'InfoFindings=%s\n' "${INFO_COUNT}"
+
+            if [ "${CRITICAL_COUNT}" -gt 0 ] ||
+              [ "${HIGH_COUNT}" -gt 0 ]
+            then
+              echo 'FAIL: active Critical/High DefectDojo findings found'
+              exit 1
+            fi
+
+            for evidence_file in \
+              preflight-response.json \
+              import-response.json \
+              import-http.txt \
+              test-id.txt \
+              findings.json
+            do
+              test -s "${REPORT_DIR}/${evidence_file}"
+            done
+
+            echo 'PASS: no active Critical/High DefectDojo findings'
+            echo 'DefectDojoSecurityGate=true'
+          '''
+        }
       }
     }
 
