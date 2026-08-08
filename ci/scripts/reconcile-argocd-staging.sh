@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/devsecops-common.sh"
 
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
+STAGING_NAMESPACE="${STAGING_NAMESPACE:-vault-bank-staging}"
 STAGING_APP="${STAGING_APP:-vault-bank-staging}"
 RUNTIME_APP="${RUNTIME_APP:-vault-bank-runtime-staging}"
 TARGET_REVISION="${ARGOCD_TARGET_REVISION:-main}"
@@ -141,6 +142,56 @@ clear_stale_operation() {
   esac
 }
 
+publish_staging_ingress_status() {
+  local node_ip
+  local ingress
+  local patched=0
+
+  if [ "${INGRESS_STATUS_PUBLISHED:-0}" = "1" ]; then
+    return 0
+  fi
+
+  node_ip="$(
+    kubectl get nodes \
+      -o jsonpath='{range .items[*]}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\n"}{end}{end}' |
+      sed -n '1p'
+  )"
+
+  if [ -z "${node_ip}" ]; then
+    log "WARN: unable to discover k3s node InternalIP for staging Ingress status"
+    return 0
+  fi
+
+  for ingress in \
+    vaultbank-api-http \
+    vaultbank-api-https \
+    vaultbank-frontend-http \
+    vaultbank-frontend-https; do
+
+    kubectl get ingress "${ingress}" \
+      --namespace "${STAGING_NAMESPACE}" \
+      >/dev/null 2>&1 ||
+      continue
+
+    if kubectl patch ingress "${ingress}" \
+      --namespace "${STAGING_NAMESPACE}" \
+      --subresource=status \
+      --type merge \
+      --patch "{\"status\":{\"loadBalancer\":{\"ingress\":[{\"ip\":\"${node_ip}\"}]}}}" \
+      >/dev/null 2>&1; then
+
+      patched=$((patched + 1))
+    else
+      log "WARN: unable to publish status for staging Ingress ${ingress}"
+    fi
+  done
+
+  if [ "${patched}" -gt 0 ]; then
+    INGRESS_STATUS_PUBLISHED=1
+    log "Published k3s node IP ${node_ip} to ${patched} staging Ingress status record(s)"
+  fi
+}
+
 print_app_diagnostics() {
   local app="$1"
 
@@ -185,9 +236,13 @@ else
   request_kubectl_sync "${STAGING_APP}"
 fi
 
+publish_staging_ingress_status
+
 deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
 
 while true; do
+  publish_staging_ingress_status
+
   status="$(
     kubectl get application "${STAGING_APP}" \
       --namespace "${ARGOCD_NAMESPACE}" \

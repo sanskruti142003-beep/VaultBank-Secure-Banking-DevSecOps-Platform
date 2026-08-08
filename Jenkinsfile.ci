@@ -594,6 +594,61 @@ pipeline {
             get namespace argocd \
             >/dev/null
 
+          publish_staging_ingress_status() {
+            if [ "${INGRESS_STATUS_PUBLISHED:-0}" = "1" ]; then
+              return 0
+            fi
+
+            STAGING_NODE_IP="$(
+              kubectl \
+                get nodes \
+                --output jsonpath='{range .items[*]}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{"\\n"}{end}{end}' |
+                sed -n '1p'
+            )"
+
+            if [ -z "${STAGING_NODE_IP}" ]; then
+              echo "WARN: unable to discover k3s node InternalIP for staging Ingress status" |
+                tee -a "${REPORT_DIR}/argocd-convergence.log"
+              return 0
+            fi
+
+            PATCHED_INGRESSES=0
+
+            for INGRESS in \
+              vaultbank-api-http \
+              vaultbank-api-https \
+              vaultbank-frontend-http \
+              vaultbank-frontend-https; do
+
+              kubectl \
+                --namespace vault-bank-staging \
+                get ingress "${INGRESS}" \
+                >/dev/null 2>&1 ||
+                continue
+
+              if kubectl \
+                --namespace vault-bank-staging \
+                patch \
+                ingress "${INGRESS}" \
+                --subresource=status \
+                --type merge \
+                --patch "{\"status\":{\"loadBalancer\":{\"ingress\":[{\"ip\":\"${STAGING_NODE_IP}\"}]}}}" \
+                >/dev/null 2>&1; then
+
+                PATCHED_INGRESSES=$((PATCHED_INGRESSES + 1))
+              else
+                echo "WARN: unable to publish status for staging Ingress ${INGRESS}" |
+                  tee -a "${REPORT_DIR}/argocd-convergence.log"
+              fi
+            done
+
+            if [ "${PATCHED_INGRESSES}" -gt 0 ]; then
+              INGRESS_STATUS_PUBLISHED=1
+              echo "Published k3s node IP ${STAGING_NODE_IP} to ${PATCHED_INGRESSES} staging Ingress status record(s)" |
+                tee -a "${REPORT_DIR}/argocd-convergence.log"
+            fi
+          }
+
           APPLICATIONS="
           vault-bank-staging
           vault-bank-runtime-staging
@@ -634,12 +689,16 @@ JSON
             fi
           done
 
+          publish_staging_ingress_status
+
           TIMEOUT_SECONDS=300
           START_EPOCH="$(date +%s)"
           DEADLINE=$((START_EPOCH + TIMEOUT_SECONDS))
 
           for APP in ${APPLICATIONS}; do
             while true; do
+              publish_staging_ingress_status
+
               SYNC_STATUS="$(
                 kubectl \
                   --namespace argocd \
