@@ -690,6 +690,43 @@ PYTHON
             --patch "$(cat "${IMAGE_OVERRIDES_JSON}")" |
             tee "${REPORT_DIR}/argocd-image-overrides-apply.log"
 
+          cat > "${REPORT_DIR}/argocd-sync.patch.json" <<'JSON'
+{
+  "operation": {
+    "initiatedBy": {
+      "username": "jenkins"
+    },
+    "sync": {
+      "revision": "main",
+      "prune": true,
+      "syncOptions": [
+        "CreateNamespace=false",
+        "PruneLast=true"
+      ],
+      "syncStrategy": {
+        "hook": {}
+      }
+    }
+  }
+}
+JSON
+
+          kubectl \
+            --namespace argocd \
+            patch \
+            application vault-bank-staging \
+            --type json \
+            --patch '[{"op":"remove","path":"/operation"}]' \
+            >/dev/null 2>&1 || true
+
+          kubectl \
+            --namespace argocd \
+            patch \
+            application vault-bank-staging \
+            --type merge \
+            --patch "$(cat "${REPORT_DIR}/argocd-sync.patch.json")" |
+            tee "${REPORT_DIR}/argocd-sync-request.log"
+
           APPLICATIONS="
           vault-bank-staging
           vault-bank-runtime-staging
@@ -752,6 +789,49 @@ PYTHON
 
               sleep 10
             done
+          done
+
+          while true; do
+            IMAGE_MISMATCHES=0
+
+            while IFS='=' read -r SERVICE EXPECTED_IMAGE; do
+              [ -n "${SERVICE}" ] || continue
+
+              CURRENT_IMAGE="$(
+                kubectl \
+                  --namespace vault-bank-staging \
+                  get deployment "${SERVICE}" \
+                  --output jsonpath='{.spec.template.spec.containers[0].image}' \
+                  2>/dev/null || true
+              )"
+
+              printf '%s deploymentImage=%s expected=%s\n' \
+                "${SERVICE}" \
+                "${CURRENT_IMAGE:-missing}" \
+                "${EXPECTED_IMAGE}" |
+                tee -a "${REPORT_DIR}/deployment-image-convergence.log"
+
+              if [ "${CURRENT_IMAGE}" != "${EXPECTED_IMAGE}" ]; then
+                IMAGE_MISMATCHES=$((IMAGE_MISMATCHES + 1))
+              fi
+            done < "${REPORT_DIR}/argocd-image-overrides.txt"
+
+            if [ "${IMAGE_MISMATCHES}" -eq 0 ]; then
+              break
+            fi
+
+            if [ "${SECONDS}" -ge "${DEADLINE}" ]; then
+              kubectl \
+                --namespace vault-bank-staging \
+                get deployments \
+                --output yaml \
+                > "${REPORT_DIR}/staging-deployments.yaml" || true
+
+              echo "FAIL: staging deployments did not converge to release image digests"
+              exit 1
+            fi
+
+            sleep 10
           done
 
           echo 'PASS: Argo CD staging applications converged to Synced/Healthy' |
