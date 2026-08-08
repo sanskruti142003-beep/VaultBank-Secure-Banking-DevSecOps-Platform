@@ -745,7 +745,7 @@ JSON
               tee -a "${REPORT_DIR}/argocd-convergence.log"
           done
 
-          DEADLINE=$((SECONDS + 300))
+          DEADLINE_EPOCH="$(($(date +%s) + 300))"
 
           for APP in ${APPLICATIONS}; do
             while true; do
@@ -776,7 +776,7 @@ JSON
                 break
               fi
 
-              if [ "${SECONDS}" -ge "${DEADLINE}" ]; then
+              if [ "$(date +%s)" -ge "${DEADLINE_EPOCH}" ]; then
                 kubectl \
                   --namespace argocd \
                   get application "${APP}" \
@@ -820,7 +820,7 @@ JSON
               break
             fi
 
-            if [ "${SECONDS}" -ge "${DEADLINE}" ]; then
+            if [ "$(date +%s)" -ge "${DEADLINE_EPOCH}" ]; then
               kubectl \
                 --namespace vault-bank-staging \
                 get deployments \
