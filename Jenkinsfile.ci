@@ -612,7 +612,9 @@ pipeline {
               tee -a "${REPORT_DIR}/argocd-convergence.log"
           done
 
-          DEADLINE=$((SECONDS + 300))
+          TIMEOUT_SECONDS=300
+          START_EPOCH="$(date +%s)"
+          DEADLINE=$((START_EPOCH + TIMEOUT_SECONDS))
 
           for APP in ${APPLICATIONS}; do
             while true; do
@@ -643,14 +645,15 @@ pipeline {
                 break
               fi
 
-              if [ "${SECONDS}" -ge "${DEADLINE}" ]; then
+              NOW_EPOCH="$(date +%s)"
+              if [ "${NOW_EPOCH}" -ge "${DEADLINE}" ]; then
                 kubectl \
                   --namespace argocd \
                   get application "${APP}" \
                   --output yaml \
                   > "${REPORT_DIR}/${APP}.yaml" || true
 
-                echo "FAIL: ${APP} did not converge to Synced/Healthy within 300 seconds"
+                echo "FAIL: ${APP} did not converge to Synced/Healthy within ${TIMEOUT_SECONDS} seconds"
                 exit 1
               fi
 
