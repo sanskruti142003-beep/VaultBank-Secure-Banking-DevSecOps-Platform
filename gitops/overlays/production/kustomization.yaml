@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: vault-bank-prod
 
 resources:
+  - prometheus-discovery-rbac.yaml
   - allow-prometheus-scrape.yaml
   - allow-shared-runtime-egress.yaml
   - shared-runtime-aliases.yaml
