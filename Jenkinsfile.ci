@@ -548,6 +548,110 @@ pipeline {
       }
     }
 
+    stage('17b Promote Staging GitOps Digests') {
+      when {
+        branch 'main'
+      }
+
+      options {
+        timeout(time: 5, unit: 'MINUTES')
+      }
+
+      steps {
+        sh '''
+          set -Eeuo pipefail
+
+          REPORT_DIR='reports/phase-13-gitops-promotion'
+          SOURCE_MANIFEST='reports/phase-13-release-manifest/vault-bank-release-manifest.json'
+          KUSTOMIZATION='gitops/overlays/staging/kustomization.yaml'
+          CURRENT_COMMIT="$(git rev-parse HEAD)"
+
+          mkdir -p "${REPORT_DIR}"
+
+          test -s "${SOURCE_MANIFEST}"
+          test -s "${KUSTOMIZATION}"
+          command -v python3 >/dev/null 2>&1
+          command -v kubectl >/dev/null 2>&1
+
+          git status --porcelain --untracked-files=no \
+            > "${REPORT_DIR}/git-status-before.txt"
+          test ! -s "${REPORT_DIR}/git-status-before.txt"
+
+          python3 \
+            ci/scripts/update-staging-image-digests.py \
+            --source "${SOURCE_MANIFEST}" \
+            --kustomization "${KUSTOMIZATION}" \
+            --report-dir "${REPORT_DIR}" \
+            --current-commit "${CURRENT_COMMIT}"
+
+          git diff --check -- "${KUSTOMIZATION}"
+
+          kubectl kustomize \
+            gitops/overlays/staging \
+            > "${REPORT_DIR}/staging-rendered.yaml"
+
+          while IFS= read -r EXPECTED_IMAGE; do
+            [ -n "${EXPECTED_IMAGE}" ] || continue
+
+            grep -F \
+              "image: ${EXPECTED_IMAGE}" \
+              "${REPORT_DIR}/staging-rendered.yaml" \
+              >/dev/null || {
+                echo "FAIL: rendered staging manifest missing ${EXPECTED_IMAGE}"
+                exit 1
+              }
+          done < "${REPORT_DIR}/expected-images.txt"
+
+          RENDERED_IMAGE_COUNT="$(
+            grep -F \
+              'image: harbor.vaultbank.internal:9443/vault-bank/' \
+              "${REPORT_DIR}/staging-rendered.yaml" |
+            wc -l |
+            tr -d '[:space:]'
+          )"
+
+          if [ "${RENDERED_IMAGE_COUNT}" -ne 6 ]; then
+            echo "FAIL: expected 6 rendered Vault Bank app images, found ${RENDERED_IMAGE_COUNT}"
+            exit 1
+          fi
+
+          if git diff --quiet -- "${KUSTOMIZATION}"; then
+            echo 'PASS: staging GitOps digests already match validated release images' |
+              tee "${REPORT_DIR}/gitops-promotion.log"
+          else
+            git diff -- "${KUSTOMIZATION}" \
+              > "${REPORT_DIR}/staging-kustomization.diff"
+
+            git config user.name 'vault-bank-jenkins'
+            git config user.email 'jenkins@vaultbank.local'
+
+            git add "${KUSTOMIZATION}"
+            git commit \
+              -m 'ci: promote validated images to staging [skip ci]'
+
+            git push origin "HEAD:${BRANCH_NAME:-main}"
+
+            echo 'PASS: promoted validated image digests to staging GitOps' |
+              tee "${REPORT_DIR}/gitops-promotion.log"
+          fi
+
+          git status --porcelain --untracked-files=no \
+            > "${REPORT_DIR}/git-status-after.txt"
+          test ! -s "${REPORT_DIR}/git-status-after.txt"
+        '''
+      }
+
+      post {
+        always {
+          archiveArtifacts(
+            allowEmptyArchive: true,
+            artifacts: 'reports/phase-13-gitops-promotion/**',
+            fingerprint: true
+          )
+        }
+      }
+    }
+
     stage('18 Argo CD Deploy - Staging') {
       when {
         branch 'main'
@@ -594,101 +698,13 @@ pipeline {
             get namespace argocd \
             >/dev/null
 
-          RELEASE_MANIFEST='reports/phase-13-release-manifest/vault-bank-release-manifest.json'
-          IMAGE_OVERRIDES_JSON="${REPORT_DIR}/argocd-image-overrides.patch.json"
-          CURRENT_COMMIT="$(git rev-parse HEAD)"
-          export RELEASE_MANIFEST REPORT_DIR CURRENT_COMMIT
-
-          test -s "${RELEASE_MANIFEST}"
-          command -v python3 >/dev/null 2>&1
-
-          python3 - <<'PYTHON'
-import json
-import os
-import re
-from pathlib import Path
-
-expected_services = [
-    "auth-service",
-    "account-service",
-    "transaction-service",
-    "payment-service",
-    "notification-service",
-    "frontend",
-]
-
-manifest_path = Path(os.environ["RELEASE_MANIFEST"])
-report_dir = Path(os.environ["REPORT_DIR"])
-current_commit = os.environ["CURRENT_COMMIT"]
-manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-
-source_commit = (manifest.get("source") or {}).get("commit", "")
-if source_commit != current_commit:
-    raise SystemExit(
-        "FAIL: release manifest commit does not match current checkout"
-    )
-
-images = {
-    image.get("service"): image.get("image", "")
-    for image in manifest.get("images") or []
-}
-
-if set(images) != set(expected_services):
-    raise SystemExit(
-        "FAIL: release manifest does not contain exactly the six staging images"
-    )
-
-reference_pattern = re.compile(
-    r"^harbor[.]vaultbank[.]internal:9443/"
-    r"vault-bank/[a-z0-9._-]+"
-    r"@sha256:[0-9a-f]{64}$"
-)
-
-overrides = []
-for service in expected_services:
-    reference = images[service]
-    if not reference_pattern.fullmatch(reference):
-        raise SystemExit(
-            f"FAIL: invalid immutable image reference for {service}"
-        )
-
-    overrides.append(f"{service}={reference}")
-
-(report_dir / "argocd-image-overrides.txt").write_text(
-    "\n".join(overrides) + "\n",
-    encoding="utf-8",
-)
-
-(report_dir / "argocd-image-overrides.patch.json").write_text(
-    json.dumps(
-        {
-            "spec": {
-                "source": {
-                    "kustomize": {
-                        "images": overrides,
-                    },
-                },
-            },
-        },
-        indent=2,
-        sort_keys=True,
-    )
-    + "\n",
-    encoding="utf-8",
-)
-
-print(
-    "PASS: prepared Argo CD immutable image overrides for six images"
-)
-PYTHON
-
           kubectl \
             --namespace argocd \
             patch \
             application vault-bank-staging \
-            --type merge \
-            --patch "$(cat "${IMAGE_OVERRIDES_JSON}")" |
-            tee "${REPORT_DIR}/argocd-image-overrides-apply.log"
+            --type json \
+            --patch '[{"op":"remove","path":"/spec/source/kustomize"}]' \
+            >/dev/null 2>&1 || true
 
           APPLICATIONS="
           vault-bank-staging
