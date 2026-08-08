@@ -47,6 +47,10 @@ patches:
         path: /metadata/annotations
         value:
           argocd.argoproj.io/sync-wave: "3"
+      - op: add
+        path: /spec/template/metadata/annotations
+        value:
+          vault-bank.io/staging-health-refresh: "2026-08-08T000000Z"
       - op: replace
         path: /spec/template/spec/serviceAccountName
         value: vault-bank-runtime
