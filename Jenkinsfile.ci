@@ -2380,6 +2380,35 @@ SUMMARY
       }
     }
 
+    stage('29 Grafana Monitoring Verification') {
+      when {
+        branch 'main'
+      }
+
+      options {
+        timeout(time: 5, unit: 'MINUTES')
+      }
+
+      steps {
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'grafana-admin',
+            usernameVariable: 'GRAFANA_USER',
+            passwordVariable: 'GRAFANA_PASSWORD'
+          )
+        ]) {
+          sh '''
+            set -Eeuo pipefail
+            set +x
+
+            export GRAFANA_URL='http://127.0.0.1:30300'
+
+            bash ci/scripts/verify-grafana.sh
+          '''
+        }
+      }
+    }
+
   }
 
   post {
