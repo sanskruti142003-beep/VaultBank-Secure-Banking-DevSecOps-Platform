@@ -30,6 +30,11 @@ pipeline {
       defaultValue: '/var/lib/jenkins/.kube/k3s.yaml',
       description: 'Kubeconfig used by Jenkins for k3s/Argo CD checks; must not point to Jenkins'
     )
+    string(
+      name: 'DEFECTDOJO_URL',
+      defaultValue: '',
+      description: 'Optional DefectDojo base URL. Empty uses STAGING_NODE_IP:8081, then localhost fallbacks.'
+    )
   }
 
   environment {
@@ -38,6 +43,7 @@ pipeline {
     STAGING_HOST = "${params.STAGING_HOST}"
     STAGING_NODE_IP = "${params.STAGING_NODE_IP}"
     KUBECONFIG = "${params.KUBECONFIG_PATH}"
+    DEFECTDOJO_URL = "${params.DEFECTDOJO_URL}"
   }
 
   stages {
@@ -1531,24 +1537,86 @@ PYTHON
             set -Eeuo pipefail
             set +x
 
-            DEFECTDOJO_URL='http://127.0.0.1:8081'
+            DEFECTDOJO_URL="${DEFECTDOJO_URL:-}"
             REPORT_DIR='reports/phase-12-defectdojo'
             ZAP_JSON='reports/phase-11-zap/zap-baseline.json'
+            SELECTED_DEFECTDOJO_URL=''
 
             mkdir -p "${REPORT_DIR}"
             test -s "${ZAP_JSON}"
             command -v jq >/dev/null 2>&1
 
-            HTTP_STATUS="$(
-              curl \
-                --silent \
-                --show-error \
-                --output "${REPORT_DIR}/preflight-response.json" \
-                --write-out '%{http_code}' \
-                --header "Authorization: Token ${DEFECTDOJO_API_TOKEN}" \
-                --header 'Accept: application/json' \
-                "${DEFECTDOJO_URL%/}/api/v2/products/?limit=1"
-            )"
+            : > "${REPORT_DIR}/defectdojo-candidates.txt"
+            : > "${REPORT_DIR}/preflight-attempts.log"
+
+            if [ -n "${DEFECTDOJO_URL}" ]; then
+              printf '%s\n' "${DEFECTDOJO_URL}" \
+                >> "${REPORT_DIR}/defectdojo-candidates.txt"
+            fi
+
+            if [ -n "${STAGING_NODE_IP:-}" ]; then
+              printf 'http://%s:8081\n' "${STAGING_NODE_IP}" \
+                >> "${REPORT_DIR}/defectdojo-candidates.txt"
+            fi
+
+            printf '%s\n' \
+              'http://127.0.0.1:8081' \
+              'http://localhost:8081' \
+              >> "${REPORT_DIR}/defectdojo-candidates.txt"
+
+            while IFS= read -r CANDIDATE_URL; do
+              [ -n "${CANDIDATE_URL}" ] || continue
+
+              printf 'Trying DefectDojoURL=%s\n' "${CANDIDATE_URL}" |
+                tee -a "${REPORT_DIR}/preflight-attempts.log"
+
+              set +e
+              HTTP_STATUS="$(
+                curl \
+                  --silent \
+                  --show-error \
+                  --retry 5 \
+                  --retry-delay 2 \
+                  --retry-connrefused \
+                  --connect-timeout 5 \
+                  --max-time 20 \
+                  --output "${REPORT_DIR}/preflight-response.json" \
+                  --write-out '%{http_code}' \
+                  --header "Authorization: Token ${DEFECTDOJO_API_TOKEN}" \
+                  --header 'Accept: application/json' \
+                  "${CANDIDATE_URL%/}/api/v2/products/?limit=1" \
+                  2>"${REPORT_DIR}/preflight-curl.err"
+              )"
+              CURL_EXIT=$?
+              set -e
+
+              printf 'DefectDojoAttemptURL=%s HTTP=%s CurlExit=%s\n' \
+                "${CANDIDATE_URL}" \
+                "${HTTP_STATUS}" \
+                "${CURL_EXIT}" |
+                tee -a "${REPORT_DIR}/preflight-attempts.log"
+
+              if [ "${CURL_EXIT}" -eq 0 ] &&
+                [ "${HTTP_STATUS}" = '200' ]
+              then
+                SELECTED_DEFECTDOJO_URL="${CANDIDATE_URL%/}"
+                break
+              fi
+            done < "${REPORT_DIR}/defectdojo-candidates.txt"
+
+            if [ -z "${SELECTED_DEFECTDOJO_URL}" ]; then
+              echo 'FAIL: DefectDojo API is not reachable or not authenticated'
+              echo 'Start DefectDojo on port 8081 or set Jenkins parameter DEFECTDOJO_URL.'
+              cat "${REPORT_DIR}/preflight-attempts.log"
+              if [ -s "${REPORT_DIR}/preflight-curl.err" ]; then
+                cat "${REPORT_DIR}/preflight-curl.err"
+              fi
+              exit 1
+            fi
+
+            DEFECTDOJO_URL="${SELECTED_DEFECTDOJO_URL}"
+            printf '%s\n' "${DEFECTDOJO_URL}" \
+              > "${REPORT_DIR}/defectdojo-url.txt"
 
             printf 'DefectDojoAPIHTTP=%s\n' "${HTTP_STATUS}"
             test "${HTTP_STATUS}" = '200'
@@ -1578,8 +1646,10 @@ PYTHON
             set -Eeuo pipefail
             set +x
 
-            DEFECTDOJO_URL='http://127.0.0.1:8081'
             REPORT_DIR='reports/phase-12-defectdojo'
+            DEFECTDOJO_URL="$(
+              tr -d '[:space:]' < "${REPORT_DIR}/defectdojo-url.txt"
+            )"
             ZAP_JSON='reports/phase-11-zap/zap-baseline.json'
             ZAP_XML='reports/phase-11-zap/zap-baseline.xml'
             BUILD_ID_VALUE="${BUILD_NUMBER:-local}"
@@ -1587,14 +1657,21 @@ PYTHON
             COMMIT_HASH_VALUE="${GIT_COMMIT:-$(git rev-parse HEAD)}"
 
             mkdir -p "${REPORT_DIR}"
+            test -n "${DEFECTDOJO_URL}"
             test -s "${ZAP_JSON}"
             test -s "${ZAP_XML}"
             command -v jq >/dev/null 2>&1
 
+            set +e
             HTTP_STATUS="$(
               curl \
                 --silent \
                 --show-error \
+                --retry 5 \
+                --retry-delay 2 \
+                --retry-connrefused \
+                --connect-timeout 5 \
+                --max-time 60 \
                 --output "${REPORT_DIR}/import-response.json" \
                 --write-out '%{http_code}' \
                 --header "Authorization: Token ${DEFECTDOJO_API_TOKEN}" \
@@ -1614,12 +1691,21 @@ PYTHON
                 --form "commit_hash=${COMMIT_HASH_VALUE}" \
                 --form 'background_import=false' \
                 --form "file=@${ZAP_XML};type=application/xml" \
-                "${DEFECTDOJO_URL%/}/api/v2/reimport-scan/"
+                "${DEFECTDOJO_URL%/}/api/v2/reimport-scan/" \
+                2>"${REPORT_DIR}/import-curl.err"
             )"
+            CURL_EXIT=$?
+            set -e
 
             printf '%s\n' "${HTTP_STATUS}" \
               > "${REPORT_DIR}/import-http.txt"
             printf 'DefectDojoImportHTTP=%s\n' "${HTTP_STATUS}"
+
+            if [ "${CURL_EXIT}" -ne 0 ]; then
+              echo "FAIL: DefectDojo reimport curl failed with exit ${CURL_EXIT}"
+              cat "${REPORT_DIR}/import-curl.err"
+              exit 1
+            fi
 
             case "${HTTP_STATUS}" in
               200|201)
@@ -1707,27 +1793,45 @@ PYTHON
             set -Eeuo pipefail
             set +x
 
-            DEFECTDOJO_URL='http://127.0.0.1:8081'
             REPORT_DIR='reports/phase-12-defectdojo'
+            DEFECTDOJO_URL="$(
+              tr -d '[:space:]' < "${REPORT_DIR}/defectdojo-url.txt"
+            )"
             TEST_ID="$(
               tr -d '[:space:]' < "${REPORT_DIR}/test-id.txt"
             )"
 
+            test -n "${DEFECTDOJO_URL}"
             test -n "${TEST_ID}"
             command -v jq >/dev/null 2>&1
 
+            set +e
             HTTP_STATUS="$(
               curl \
                 --silent \
                 --show-error \
+                --retry 5 \
+                --retry-delay 2 \
+                --retry-connrefused \
+                --connect-timeout 5 \
+                --max-time 30 \
                 --output "${REPORT_DIR}/findings.json" \
                 --write-out '%{http_code}' \
                 --header "Authorization: Token ${DEFECTDOJO_API_TOKEN}" \
                 --header 'Accept: application/json' \
-                "${DEFECTDOJO_URL%/}/api/v2/findings/?test=${TEST_ID}&active=true&limit=200"
+                "${DEFECTDOJO_URL%/}/api/v2/findings/?test=${TEST_ID}&active=true&limit=200" \
+                2>"${REPORT_DIR}/findings-curl.err"
             )"
+            CURL_EXIT=$?
+            set -e
 
             printf 'DefectDojoFindingsHTTP=%s\n' "${HTTP_STATUS}"
+            if [ "${CURL_EXIT}" -ne 0 ]; then
+              echo "FAIL: DefectDojo findings curl failed with exit ${CURL_EXIT}"
+              cat "${REPORT_DIR}/findings-curl.err"
+              exit 1
+            fi
+
             test "${HTTP_STATUS}" = '200'
             jq -e 'type == "object"' \
               "${REPORT_DIR}/findings.json" >/dev/null
@@ -1760,6 +1864,7 @@ PYTHON
 
             for evidence_file in \
               preflight-response.json \
+              defectdojo-url.txt \
               import-response.json \
               import-http.txt \
               test-id.txt \
