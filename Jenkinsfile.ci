@@ -612,6 +612,28 @@ pipeline {
               tee -a "${REPORT_DIR}/argocd-convergence.log"
           done
 
+          SYNC_PATCH="$(
+            cat <<'JSON'
+{"operation":{"initiatedBy":{"username":"jenkins"},"sync":{"revision":"main","prune":true,"syncOptions":["PruneLast=true"]}}}
+JSON
+          )"
+
+          for APP in ${APPLICATIONS}; do
+            echo "Requesting Argo CD sync for ${APP}" |
+              tee -a "${REPORT_DIR}/argocd-convergence.log"
+
+            if ! kubectl \
+              --namespace argocd \
+              patch \
+              application "${APP}" \
+              --type merge \
+              --patch "${SYNC_PATCH}" |
+              tee -a "${REPORT_DIR}/argocd-convergence.log"; then
+              echo "WARN: unable to request Argo CD sync for ${APP}; continuing to wait for automated reconciliation" |
+                tee -a "${REPORT_DIR}/argocd-convergence.log"
+            fi
+          done
+
           TIMEOUT_SECONDS=300
           START_EPOCH="$(date +%s)"
           DEADLINE=$((START_EPOCH + TIMEOUT_SECONDS))
