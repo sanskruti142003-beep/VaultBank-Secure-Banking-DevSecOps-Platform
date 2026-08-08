@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vaultbank-frontend-https
+  namespace: vault-bank-prod
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: vaultbank
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - prod.vaultbank.internal
+      secretName: vaultbank-staging-tls
+  rules:
+    - host: prod.vaultbank.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 8080

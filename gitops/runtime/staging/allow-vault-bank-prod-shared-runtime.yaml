@@ -1,0 +1,60 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-vault-bank-prod-postgres
+  namespace: vault-bank-staging
+spec:
+  podSelector:
+    matchLabels:
+      "app.kubernetes.io/name": "postgres"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault-bank-prod
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-vault-bank-prod-redis
+  namespace: vault-bank-staging
+spec:
+  podSelector:
+    matchLabels:
+      "app.kubernetes.io/name": "redis"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault-bank-prod
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-vault-bank-prod-rabbitmq
+  namespace: vault-bank-staging
+spec:
+  podSelector:
+    matchLabels:
+      "app.kubernetes.io/name": "rabbitmq"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault-bank-prod
+      ports:
+        - protocol: TCP
+          port: 5672
+---

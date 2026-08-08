@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-bank-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: vault-bank-prod
+    app.kubernetes.io/part-of: vault-bank
+    environment: staging
+  annotations:
+    vault-bank.io/sync-state: enabled-phase5e-b4
+spec:
+  project: vault-bank-staging
+
+  source:
+    repoURL: https://github.com/sonappatil/vault_bank.git
+    targetRevision: main
+    path: gitops/overlays/production
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault-bank-prod
+
+  syncPolicy:
+    automated:
+      enabled: true
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - PruneLast=true
+
+  revisionHistoryLimit: 10

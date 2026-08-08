@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  template:
+    spec:
+      containers:
+        - name: frontend
+          image: harbor.vaultbank.internal:9443/vault-bank/frontend@sha256:2193523731f9c93501b9d64a8eec35d430ed44bb6df5319b90e43d4aef192413

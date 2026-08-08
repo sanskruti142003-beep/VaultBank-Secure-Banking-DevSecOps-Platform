@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: banking-runtime-config
+data:
+  RECEIPT_BASE_URL: https://staging-receipts.example.com
+  DATABASE_SSL: "true"

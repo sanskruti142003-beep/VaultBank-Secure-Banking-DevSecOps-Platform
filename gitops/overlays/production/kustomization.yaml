@@ -1,0 +1,95 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vault-bank-prod
+
+resources:
+  - allow-shared-runtime-egress.yaml
+  - shared-runtime-aliases.yaml
+  - namespace.yaml
+  - ../../base
+  - runtime-serviceaccount.yaml
+  - resource-quota.yaml
+
+  - exposure/https-redirect-middleware.yaml
+  - exposure/frontend-http-ingress.yaml
+  - exposure/frontend-https-ingress.yaml
+  - exposure/frontend-networkpolicy.yaml
+  - exposure/api-http-ingress.yaml
+  - exposure/api-https-ingress.yaml
+  - exposure/backend-networkpolicies.yaml
+images:
+  - name: auth-service
+    newName: harbor.vaultbank.internal:9443/vault-bank/auth-service
+    digest: sha256:546ab7a37d4962a38db41a0f3c4ef54965691df56310d3cc88660f5e41f80e46
+  - name: account-service
+    newName: harbor.vaultbank.internal:9443/vault-bank/account-service
+    digest: sha256:7a685a7a851a2934de9ca1256a05493a3f4ad0d0ae68d1f5f2bc3186049b9948
+  - name: transaction-service
+    newName: harbor.vaultbank.internal:9443/vault-bank/transaction-service
+    digest: sha256:3c7b7091aa1517f8b442e12bed07c0964226bf4e991ef497463702893d9775b8
+  - name: payment-service
+    newName: harbor.vaultbank.internal:9443/vault-bank/payment-service
+    digest: sha256:06fcdf26a4f9d3dfbcc2248bdddc7c717cdf278073f04aeac5705616274d2ac2
+  - name: notification-service
+    newName: harbor.vaultbank.internal:9443/vault-bank/notification-service
+    digest: sha256:7469bd8960d283a0b4da496c3d0b670efbb24b6c7ec81336d16ac438d18802a1
+  - name: frontend
+    newName: harbor.vaultbank.internal:9443/vault-bank/frontend
+    digest: sha256:2193523731f9c93501b9d64a8eec35d430ed44bb6df5319b90e43d4aef192413
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      labelSelector: app.kubernetes.io/part-of=vaultbank
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-wave: "3"
+      - op: add
+        path: /spec/template/metadata/annotations
+        value:
+          vault-bank.io/staging-health-refresh: "2026-08-08T000000Z"
+      - op: replace
+        path: /spec/template/spec/serviceAccountName
+        value: vault-bank-runtime
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+      - op: add
+        path: /spec/strategy
+        value:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 0
+            maxUnavailable: 1
+
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: frontend
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: frontend
+      spec:
+        template:
+          spec:
+            containers:
+              - name: frontend
+                image: harbor.vaultbank.internal:9443/vault-bank/frontend@sha256:2193523731f9c93501b9d64a8eec35d430ed44bb6df5319b90e43d4aef192413
+
+  - target:
+      version: v1
+      kind: ConfigMap
+      name: banking-runtime-config
+    patch: |-
+      - op: replace
+        path: /data/DATABASE_SSL
+        value: "false"
+  - path: frontend-production-image-patch.yaml
