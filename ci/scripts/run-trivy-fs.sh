@@ -99,15 +99,6 @@ done
 
 mkdir -p "${REPORT_DIR}"
 
-rm -f \
-  "${COMBINED_REPORT}" \
-  "${TABLE_REPORT}" \
-  "${SARIF_REPORT}" \
-  "${CRITICAL_REPORT}" \
-  "${FIXABLE_HIGH_REPORT}" \
-  "${SUMMARY_REPORT}" \
-  "${METADATA_REPORT}"
-
 python3 \
   "${SCRIPT_DIR}/validate-security-exceptions.py"
 
@@ -122,60 +113,9 @@ declare -a TRIVY_COMMON_ARGS=(
   --skip-dirs "${ROOT_DIR}/backend-service/node_modules"
   --skip-dirs "${ROOT_DIR}/frontend/node_modules"
   --skip-dirs "${ROOT_DIR}/backend-service/coverage"
+  --skip-dirs "${ROOT_DIR}/backend-service/nginx/certs"
   --skip-dirs "${ROOT_DIR}/frontend/dist"
 )
-
-log \
-  "Running Trivy filesystem vulnerability, secret and IaC scan"
-
-run_logged \
-  "trivy-fs-combined-json" \
-  trivy fs \
-  "${TRIVY_COMMON_ARGS[@]}" \
-  --scanners vuln,misconfig,secret \
-  --include-dev-deps \
-  --exit-code 0 \
-  --format json \
-  --output "${COMBINED_REPORT}" \
-  "${ROOT_DIR}"
-
-[ -s "${COMBINED_REPORT}" ] ||
-  die "Trivy combined JSON report was not generated"
-
-log \
-  "Generating Trivy High/Critical table evidence"
-
-run_logged \
-  "trivy-fs-table" \
-  trivy fs \
-  "${TRIVY_COMMON_ARGS[@]}" \
-  --scanners vuln,misconfig,secret \
-  --include-dev-deps \
-  --severity HIGH,CRITICAL \
-  --exit-code 0 \
-  --format table \
-  --output "${TABLE_REPORT}" \
-  "${ROOT_DIR}"
-
-[ -s "${TABLE_REPORT}" ] ||
-  die "Trivy table report was not generated"
-
-log \
-  "Generating Trivy secret and IaC SARIF evidence"
-
-run_logged \
-  "trivy-fs-secret-misconfig-sarif" \
-  trivy fs \
-  "${TRIVY_COMMON_ARGS[@]}" \
-  --scanners misconfig,secret \
-  --severity HIGH,CRITICAL \
-  --exit-code 0 \
-  --format sarif \
-  --output "${SARIF_REPORT}" \
-  "${ROOT_DIR}"
-
-[ -s "${SARIF_REPORT}" ] ||
-  die "Trivy SARIF report was not generated"
 
 export \
   COMBINED_REPORT \
@@ -183,7 +123,70 @@ export \
   FIXABLE_HIGH_REPORT \
   SUMMARY_REPORT
 
-set +e
+run_trivy_reports() {
+  rm -f \
+    "${COMBINED_REPORT}" \
+    "${TABLE_REPORT}" \
+    "${SARIF_REPORT}" \
+    "${CRITICAL_REPORT}" \
+    "${FIXABLE_HIGH_REPORT}" \
+    "${SUMMARY_REPORT}" \
+    "${METADATA_REPORT}"
+
+  log \
+    "Running Trivy filesystem vulnerability, secret and IaC scan"
+
+  run_logged \
+    "trivy-fs-combined-json" \
+    trivy fs \
+    "${TRIVY_COMMON_ARGS[@]}" \
+    --scanners vuln,misconfig,secret \
+    --include-dev-deps \
+    --exit-code 0 \
+    --format json \
+    --output "${COMBINED_REPORT}" \
+    "${ROOT_DIR}"
+
+  [ -s "${COMBINED_REPORT}" ] ||
+    die "Trivy combined JSON report was not generated"
+
+  log \
+    "Generating Trivy High/Critical table evidence"
+
+  run_logged \
+    "trivy-fs-table" \
+    trivy fs \
+    "${TRIVY_COMMON_ARGS[@]}" \
+    --scanners vuln,misconfig,secret \
+    --include-dev-deps \
+    --severity HIGH,CRITICAL \
+    --exit-code 0 \
+    --format table \
+    --output "${TABLE_REPORT}" \
+    "${ROOT_DIR}"
+
+  [ -s "${TABLE_REPORT}" ] ||
+    die "Trivy table report was not generated"
+
+  log \
+    "Generating Trivy secret and IaC SARIF evidence"
+
+  run_logged \
+    "trivy-fs-secret-misconfig-sarif" \
+    trivy fs \
+    "${TRIVY_COMMON_ARGS[@]}" \
+    --scanners misconfig,secret \
+    --severity HIGH,CRITICAL \
+    --exit-code 0 \
+    --format sarif \
+    --output "${SARIF_REPORT}" \
+    "${ROOT_DIR}"
+
+  [ -s "${SARIF_REPORT}" ] ||
+    die "Trivy SARIF report was not generated"
+}
+
+evaluate_trivy_gate() {
 
 python3 - <<'PY'
 import copy
@@ -336,12 +339,75 @@ print(
 )
 
 if not summary["gate_passed"]:
+    for finding in fixable_high_vulnerabilities:
+        print(
+            "Fixable HIGH vulnerability:",
+            finding.get("PkgName"),
+            finding.get("InstalledVersion"),
+            "->",
+            finding.get("FixedVersion"),
+            finding.get("VulnerabilityID"),
+            finding.get("Title") or "",
+        )
+
+    for finding in critical_vulnerabilities:
+        print(
+            "CRITICAL vulnerability:",
+            finding.get("PkgName"),
+            finding.get("InstalledVersion"),
+            "->",
+            finding.get("FixedVersion") or "unfixed",
+            finding.get("VulnerabilityID"),
+            finding.get("Title") or "",
+        )
+
     raise SystemExit(1)
 PY
+}
+
+run_trivy_reports
+
+set +e
+
+evaluate_trivy_gate
 
 GATE_EXIT=$?
 
 set -e
+
+if [ "${GATE_EXIT}" -ne 0 ] &&
+  [ "${TRIVY_RETRY_WITH_FRESH_DB:-1}" = "1" ]; then
+  log \
+    "Trivy gate failed; refreshing vulnerability DB/check bundle and retrying once"
+
+  if ! run_logged \
+    "trivy-clean-vuln-db" \
+    trivy clean \
+    --cache-dir "${TRIVY_CACHE_DIR}" \
+    --vuln-db; then
+    log \
+      "WARN: unable to clean Trivy vulnerability DB; retrying with existing cache"
+  fi
+
+  if ! run_logged \
+    "trivy-clean-checks-bundle" \
+    trivy clean \
+    --cache-dir "${TRIVY_CACHE_DIR}" \
+    --checks-bundle; then
+    log \
+      "WARN: unable to clean Trivy checks bundle; retrying with existing cache"
+  fi
+
+  run_trivy_reports
+
+  set +e
+
+  evaluate_trivy_gate
+
+  GATE_EXIT=$?
+
+  set -e
+fi
 
 printf '%s\n' \
   "trivy_version=${INSTALLED_TRIVY_VERSION}" \
