@@ -71,7 +71,12 @@ spec:
               memory: 384Mi
           securityContext:
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
             readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop:
                 - ALL
@@ -169,7 +174,12 @@ spec:
               memory: 384Mi
           securityContext:
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
             readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop:
                 - ALL
@@ -267,7 +277,12 @@ spec:
               memory: 448Mi
           securityContext:
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
             readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop:
                 - ALL
@@ -365,7 +380,12 @@ spec:
               memory: 448Mi
           securityContext:
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
             readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop:
                 - ALL
@@ -465,7 +485,12 @@ spec:
               memory: 320Mi
           securityContext:
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
             readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop:
                 - ALL

@@ -361,6 +361,23 @@ if not summary["gate_passed"]:
             finding.get("Title") or "",
         )
 
+    for finding in high_critical_secrets:
+        print(
+            "HIGH/CRITICAL secret:",
+            finding.get("RuleID") or finding.get("ID") or "unknown-rule",
+            finding.get("Severity") or "UNKNOWN",
+            finding.get("Title") or finding.get("Category") or "",
+        )
+
+    for finding in high_critical_misconfigurations:
+        print(
+            "HIGH/CRITICAL misconfiguration:",
+            finding.get("ID") or finding.get("AVDID") or "unknown-check",
+            finding.get("Severity") or "UNKNOWN",
+            finding.get("Title") or "",
+            finding.get("Message") or "",
+        )
+
     raise SystemExit(1)
 PY
 }
