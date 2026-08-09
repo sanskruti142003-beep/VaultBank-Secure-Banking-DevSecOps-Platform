@@ -51,7 +51,13 @@ describe('MetricsController', () => {
 
   it('keeps the normal API response envelope in the shared interceptor', async () => {
     const interceptor = new TransformInterceptor();
-    const context = {} as ExecutionContext;
+    const context = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          originalUrl: '/v1/accounts',
+        }),
+      }),
+    } as unknown as ExecutionContext;
     const next = {
       handle: () => of({ accountId: 'acc-001' }),
     } as CallHandler;
