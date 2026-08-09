@@ -32,5 +32,4 @@ images:
     newTag: replace-me
 
 patches:
-  - path: nodeport-services.yaml
   - path: runtime-config-patch.yaml
