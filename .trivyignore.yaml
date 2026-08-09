@@ -16,5 +16,15 @@ misconfigurations:
       AWS Free Tier POC uses S3-managed AES-256 encryption. Production
       must use SSE-KMS with a customer-managed key before this
       exception expires.
+  - id: KSV-0108
+    paths:
+      - "gitops/overlays/production/shared-runtime-aliases.yaml"
+    expired_at: 2026-09-30
+    statement: >-
+      AWS Free Tier POC production namespace reuses the staging
+      PostgreSQL, Redis, and RabbitMQ runtime through Kubernetes
+      ExternalName service aliases to avoid paid duplicate managed
+      services. A production-grade release must provision dedicated
+      production runtime services before this exception expires.
 secrets: []
 licenses: []
