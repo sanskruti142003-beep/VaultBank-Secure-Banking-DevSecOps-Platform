@@ -1,0 +1,17 @@
+PRESERVATION NOTE
+
+Original user-provided material:
+- .env: copied byte-for-byte from the uploaded fullproject.txt
+- ORIGINAL-fullproject.txt: untouched backup of the same uploaded file
+
+Added starter files:
+- backend service folders and basic Express health endpoints
+- frontend Vite starter
+- docker-compose.yml
+- package.json files
+- .env.example
+- .gitignore
+- README.md
+- infrastructure folders
+
+No lines in the original uploaded environment file were intentionally edited.
