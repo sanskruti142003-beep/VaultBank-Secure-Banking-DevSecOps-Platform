@@ -98,12 +98,30 @@ pipeline {
           steps {
             dir('frontend') {
               sh '''
-                set -Eeuo pipefail
-                npm ci
-                npm run typecheck
-                npm run build
-                git diff --exit-code -- package.json package-lock.json
-              '''
+  set -Eeuo pipefail
+
+  echo "===== FRONTEND: NPM CI ====="
+  npm ci
+
+  echo "===== FRONTEND: TYPECHECK ====="
+  npm run typecheck
+
+  echo "===== FRONTEND: BUILD ====="
+  npm run build
+
+  echo "===== FRONTEND: GIT DIFF ====="
+  git status --short
+  git diff -- package.json package-lock.json
+  git diff --exit-code -- package.json package-lock.json
+
+  echo "===== FRONTEND QUALITY PASSED ====="
+'''
+                
+              
+                
+                
+                
+              
             }
           }
         }
