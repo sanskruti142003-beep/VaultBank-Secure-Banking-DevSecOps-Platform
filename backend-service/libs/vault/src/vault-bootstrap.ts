@@ -76,11 +76,14 @@ export async function loadVaultSecrets(
 
   const secrets = adaptSecretsForRuntime(response.data.data);
   Object.entries(secrets).forEach(([key, value]) => {
-    if (value.trim() || !process.env[key]?.trim()) {
-      process.env[key] = value;
-    }
-  });
-  return secrets;
+  if (
+    typeof value === 'string' &&
+    (value.trim() || !process.env[key]?.trim())
+  ) {
+    process.env[key] = value;
+  }
+});
+return secrets;
 }
 
 export function adaptSecretsForRuntime(
